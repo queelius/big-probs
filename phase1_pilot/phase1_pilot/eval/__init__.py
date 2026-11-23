@@ -1,0 +1,43 @@
+"""Diagnostic evaluation probes and Track 1 §5.5 falsification verdict engine."""
+
+from phase1_pilot.eval.diagnostics import (
+    ArmEvalBundle,
+    CalibrationResult,
+    ParetoPoint,
+    PassAtKResult,
+    PilotVerdict,
+    ThoughtFaithfulnessResult,
+    check_monotonic_depth_scaling,
+    compute_ece_and_brier,
+    compute_faithfulness_summary,
+    compute_pass_at_k_from_counts,
+    compute_pilot_verdict,
+    corrupt_discrete_thought_format_matched,
+    evaluate_calibration,
+    evaluate_pareto_point,
+    evaluate_pass_at_k,
+    evaluate_thought_faithfulness,
+    perturb_continuous_latents_norm_matched,
+    unbiased_pass_at_k,
+)
+
+__all__ = [
+    "ArmEvalBundle",
+    "CalibrationResult",
+    "ParetoPoint",
+    "PassAtKResult",
+    "PilotVerdict",
+    "ThoughtFaithfulnessResult",
+    "check_monotonic_depth_scaling",
+    "compute_ece_and_brier",
+    "compute_faithfulness_summary",
+    "compute_pass_at_k_from_counts",
+    "compute_pilot_verdict",
+    "corrupt_discrete_thought_format_matched",
+    "evaluate_calibration",
+    "evaluate_pareto_point",
+    "evaluate_pass_at_k",
+    "evaluate_thought_faithfulness",
+    "perturb_continuous_latents_norm_matched",
+    "unbiased_pass_at_k",
+]

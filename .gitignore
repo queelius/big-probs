@@ -1,0 +1,37 @@
+# Python & virtual environments
+.venv/
+venv/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# Model checkpoints, weights, and large dataset shards (hosted on HuggingFace Hub)
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+*.parquet
+*.arrow
+
+# Training run outputs & experiment artifacts
+phase1_pilot/results/micro_runs/
+phase1_pilot/runs/
+runs/
+wandb/
+
+# Secrets & local environment
+.env
+.env.*
+
+# OS / editor artifacts
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

@@ -1,0 +1,44 @@
+[project]
+name = "phase1-pilot"
+version = "0.1.0"
+description = "Phase 1 Small-Model Latent-CoT RL Pilot (SSL-as-RL)"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.5.0",
+    "numpy>=1.26.0",
+    "pytest>=8.0.0",
+]
+
+[project.optional-dependencies]
+h100 = [
+    "datasets>=2.18.0",
+    "transformers>=4.40.0",
+    "tiktoken>=0.7.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["phase1_pilot"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+# Default to lightweight PyTorch CPU wheels for fast local dev/testing.
+# On H100/CUDA nodes, switch `torch` source to `pytorch-cu124` (or install with
+# `uv pip install --reinstall torch --index-url https://download.pytorch.org/whl/cu124`).
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
