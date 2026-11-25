@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import collections
 import contextlib
+import dataclasses
+import hashlib
 import io
+import json
 import math
 import re
 
@@ -15,9 +18,13 @@ from torch.utils.data import DataLoader
 
 from phase1_pilot.config import DataConfig, ModelConfig, RLConfig, TrainConfig
 from phase1_pilot.data.generators import (
+    NATURAL_TEMPLATES,
+    TRAIN_REGIME_MIX,
     PilotDataset,
     Sample,
     TokenizedSample,
+    _natural_signature,
+    _split_counts,
     build_stratified_datasets,
     collate_batch,
     generate_aleatoric_cloze,
@@ -352,6 +359,129 @@ def test_natural_stream_and_h100_mixture_loader() -> None:
 
     with pytest.raises(ValueError):
         load_h100_web_mixture(weights=(0.5, 0.5, 0.5), dataset_loader=_fake_loader)
+
+
+def _sig(sample: Sample) -> str:
+    return _natural_signature(sample.prompt, sample.target)
+
+
+def test_natural_templates_original_domains_render_distinct_samples() -> None:
+    # Exhaustion tracking and capacity() both assume one distinct sample per combination.
+    for template in NATURAL_TEMPLATES:
+        assert len(template.original_signatures()) == template.capacity(widened=False), template.name
+        for p in template.params:
+            assert set(p.original.values()) <= set(p.widened.values()), (template.name, p.name)
+
+
+def test_natural_stream_widens_only_after_original_domain_is_exhausted() -> None:
+    k = len(NATURAL_TEMPLATES)
+    t_idx = min(range(k), key=lambda i: NATURAL_TEMPLATES[i].capacity(widened=False))
+    tight = NATURAL_TEMPLATES[t_idx]
+    n_orig = tight.capacity(widened=False)
+    # Largest request the pre-widening generator could fill: the tightest template's original
+    # domain fully used, plus the samples of templates ahead of it in round-robin order.
+    at_cap = n_orig * k + t_idx
+
+    small = generate_natural_stream(at_cap, seed=5)
+    large = generate_natural_stream(3 * at_cap, seed=5)
+
+    assert len(large) == 3 * at_cap
+    assert large[:at_cap] == small  # widening never changes samples generated before it
+    assert len({_sig(s) for s in large}) == len(large)
+    tight_sigs = [_sig(s) for s in large[t_idx::k]]
+    original = tight.original_signatures()
+    assert set(tight_sigs[:n_orig]) == original
+    assert original.isdisjoint(tight_sigs[n_orig:])
+
+
+def _samples_digest(samples: list[Sample]) -> str:
+    payload = json.dumps([dataclasses.asdict(s) for s in samples], sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def test_natural_stream_matches_pre_widening_fixture() -> None:
+    # Digests computed with the pre-widening generator (commit 8c3e18e). Train uses 300 of the
+    # 360 arithmetic-series samples; eval needs exactly the remaining 60 under exclusions.
+    train = generate_natural_stream(900, seed=11)
+    assert _samples_digest(train) == "4e80c2cda1365d0dbfab34ebe4a4c5a81051a6a4798eae63556dd2b9767dfc76"
+    excluded = {_sig(s) for s in train}
+    evals = generate_natural_stream(180, seed=12, exclude_signatures=set(excluded))
+    assert _samples_digest(evals) == "ce28f4e1981d92fdd8a848e3d0e48dd3d0d30a4aeb295718cdb2bf910e695bed"
+
+    # Past that point the same call widens instead of failing, and keeps the fixture as a prefix.
+    k = len(NATURAL_TEMPLATES)
+    t_idx = next(i for i, t in enumerate(NATURAL_TEMPLATES) if t.name == "arithmetic_series")
+    longer = generate_natural_stream(360, seed=12, exclude_signatures=set(excluded))
+    assert longer[:180] == evals
+    original = NATURAL_TEMPLATES[t_idx].original_signatures()
+    assert original.isdisjoint(_sig(s) for s in longer[180:][(t_idx - 180) % k :: k])
+    assert excluded.isdisjoint(_sig(s) for s in longer)
+
+
+def test_build_stratified_datasets_past_legacy_natural_cap() -> None:
+    # 300 train + 900 eval natural samples exceed the ~1,080 the pre-widening generator allowed.
+    cfg = DataConfig(seed=42, n_train_samples=2000, n_eval_samples=900, max_seq_len=256)
+    splits = build_stratified_datasets(cfg, PilotTokenizer())
+    train_nat = [_sig(s) for s in splits["train"].samples if s.regime == "natural"]
+    eval_nat = [_sig(s) for s in splits["eval_natural"].samples]
+    assert len(train_nat) == _split_counts(2000, TRAIN_REGIME_MIX)[1]
+    assert len(eval_nat) == 900
+    assert len(set(train_nat)) == len(train_nat)
+    assert len(set(eval_nat)) == len(eval_nat)
+    assert set(train_nat).isdisjoint(eval_nat)
+
+
+def test_natural_stream_meets_h100_launcher_default_demand() -> None:
+    # scripts/launch_h100_stage1.sh defaults: N_TRAIN_SAMPLES=200000, N_EVAL_SAMPLES=2000 (BL-11).
+    n_train_nat = _split_counts(200_000, TRAIN_REGIME_MIX)[1]
+    train = generate_natural_stream(n_train_nat, seed=1)
+    train_sigs = {_sig(s) for s in train}
+    evals = generate_natural_stream(2000, seed=2, exclude_signatures=train_sigs)
+    eval_sigs = {_sig(s) for s in evals}
+    assert len(train_sigs) == n_train_nat
+    assert len(evals) == len(eval_sigs) == 2000
+    assert train_sigs.isdisjoint(eval_sigs)
+
+
+def test_natural_stream_rejects_requests_beyond_capacity() -> None:
+    k = len(NATURAL_TEMPLATES)
+    t_idx = min(range(k), key=lambda i: NATURAL_TEMPLATES[i].capacity(widened=True))
+    n = NATURAL_TEMPLATES[t_idx].capacity(widened=True) * k + t_idx + 1
+    with pytest.raises(ValueError, match="can produce at most"):
+        generate_natural_stream(n, seed=0)
+
+
+# sha256 over every split's samples and tokenized records. These pin the data behind EXP-001
+# (research/experiments.jsonl) and the published HF splits (scripts/publish_hf.py exports
+# `micro_pilot` with the EXP-001 config and `stage1_benchmark`). If a digest changes, those
+# artifacts no longer reproduce from HEAD: record it per research/PROCEDURE.md §4.4.
+_GOLDEN_DATASET_DIGESTS: dict[str, tuple[DataConfig, str]] = {
+    "exp001_micro_pilot": (
+        DataConfig(seed=42, train_depths=(2, 4), eval_ood_depths=(6, 8),
+                   n_train_samples=600, n_eval_samples=48, max_seq_len=192),
+        "2097a4ab9569b6a57d48a9e88c98abaeddcb674657cd1956aa0b4057137fd122",
+    ),
+    "hf_stage1_benchmark": (
+        DataConfig(seed=42, train_depths=(2, 4), eval_ood_depths=(6, 8),
+                   n_train_samples=2000, n_eval_samples=300, max_seq_len=256),
+        "b67c63f3174c5c133158722fb2de6d6a121772582324e2a6b32451eb892c1202",
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_GOLDEN_DATASET_DIGESTS))
+def test_generated_datasets_match_committed_artifacts(name: str) -> None:
+    cfg, expected = _GOLDEN_DATASET_DIGESTS[name]
+    splits = build_stratified_datasets(cfg, PilotTokenizer())
+    payload = {
+        split: {
+            "samples": [dataclasses.asdict(s) for s in ds.samples],
+            "tokenized": [dataclasses.asdict(t) for t in ds.tokenized],
+        }
+        for split, ds in splits.items()
+    }
+    digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+    assert digest == expected
 
 
 # ---------------------------------------------------------------------------

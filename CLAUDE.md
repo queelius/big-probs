@@ -12,7 +12,7 @@ The root holds the theory (`00-unified-framework.md` synthesizes Tracks 1–3 in
 
 ```bash
 uv sync                                    # CPU torch; pyproject pins the pytorch-cpu index
-uv run pytest -q                           # full suite: ~50 tests, ~10 s on CPU
+uv run pytest                              # full suite: 58 tests, ~13 s on an idle CPU (addopts sets -q; a second -q hides the summary)
 uv run pytest tests/test_rl.py::test_ssl_rl_trainer_anti_sabotage_and_smoke_micro_small -v   # one test
 uv run pytest tests/test_eval.py -k parity -v                                                # by keyword
 uv run --with pytest-cov pytest --cov=phase1_pilot --cov-report=term-missing                 # coverage (pytest-cov is not a project dependency)
@@ -25,10 +25,10 @@ uv run python scripts/log_experiment.py --metrics <json> --exp-id EXP-xxx --titl
 No linter, formatter, or type checker is configured.
 
 - **`run_micro_pilot.py` writes to `results/` by default**, which overwrites the committed `EXP-001` artifacts (`results/micro_pilot_{report.md,metrics.json}`). A default-argument rerun on the dev machine reproduced every committed metric exactly (seed 42, CPU); only run metadata differed (`elapsed_seconds`, `config.output_dir`, the report timestamp), so a rerun into `results/` only dirties the tree. Send every other run to `--output-dir runs/<tag>` (gitignored).
-- **Dataset sizes are capped.** `build_stratified_datasets` raises `RuntimeError: Could only generate … unique natural_stream samples` unless roughly `0.15 × n_train + n_eval ≤ 1080` (see Data). The micro-pilot and `train.py` defaults fit; the H100 launcher's defaults do not.
+- **Generated data is pinned.** `tests/test_data.py::test_generated_datasets_match_committed_artifacts` checks sha256 digests of the datasets behind `EXP-001` and the published HF splits. If a generator change breaks it, those artifacts no longer reproduce from HEAD. Treat that as a data-version change and record it per `PROCEDURE.md` §4.4; do not just update the digest.
 - **If pytest collection fails with `No module named 'torch'` after `uv sync`**, check `head -1 .venv/bin/pytest`. A stale absolute shebang (the repo directory was moved) makes `pytest` resolve to another interpreter on `PATH`. Fix with `uv sync --locked --reinstall`.
 - **GPU nodes:** `uv sync --extra h100`, `uv pip install --reinstall torch --index-url https://download.pytorch.org/whl/cu124`, `source .venv/bin/activate`, then `NPROC_PER_NODE=4 OUT_ROOT=runs/h100_stage1 bash scripts/launch_h100_stage1.sh`. The launcher runs 8 training jobs in sequence through bare `python`/`torchrun`.
-  - Its default `N_TRAIN_SAMPLES=200000 N_EVAL_SAMPLES=2000` exceed the dataset cap, so the first job exits during dataset construction, before any training. Until the generator is fixed, pass sizes that fit, such as `N_TRAIN_SAMPLES=5000 N_EVAL_SAMPLES=300`. `SUP_STEPS=200 RL_STEPS=50 NPROC_PER_NODE=1` shortens it to a smoke pass.
+  - Every rank builds the full dataset itself: about 12 s on the dev CPU at the defaults (`N_TRAIN_SAMPLES=200000 N_EVAL_SAMPLES=2000`). `SUP_STEPS=200 RL_STEPS=50 NPROC_PER_NODE=1` shortens the run to a smoke pass.
   - After the CUDA reinstall, do not use plain `uv run` on that node. It re-syncs the venv to `uv.lock`, which pins the CPU torch wheel. `--device auto` then falls back to CPU without an error, and `--bf16` is ignored off CUDA. Use `uv run --no-sync` or the activated venv.
 
 ## Architecture (`phase1_pilot/phase1_pilot/`)
@@ -56,9 +56,9 @@ Adding an arm to the two fixed suites also needs wiring in `scripts/run_micro_pi
 
 **Data.** `data/generators.py::build_stratified_datasets` returns five splits: `train` (by default 75% Regime 1 algorithmic at hop depths {2,4}, 15% Regime 2 synthetic natural text, 10% Regime 3 aleatoric cloze), `eval_id`, `eval_ood` (depths {6,8}), `eval_natural`, and `eval_aleatoric`. The splits are separated by prompt-signature dedup (applied before tokenization), disjoint depths, and disjoint entity namespaces. `train.py --regime` only picks which eval split is the validation loader; training always uses the mixed `train` split.
 
-`generate_natural_stream` is the size bottleneck. Every third sample is an arithmetic-series item with only 360 variants, so the generator yields about 1,080 unique samples, shared by `train` and `eval_natural`. The algorithmic generators are not the limit (150k unique samples build in seconds).
+Regime 2 text comes from `generate_natural_stream`, which draws sample `i` from `NATURAL_TEMPLATES[i % 3]` (math, code, arithmetic series). Each template parameter has an `original` domain and a wider `widened` one. A template moves to its widened domain only after its original domain is used up, so outputs at every size the pre-widening generator could produce are byte-identical; past about 1,080 natural samples, arithmetic-series items have larger numbers. Changing an `original` domain or the parameter order changes the committed data (see "Generated data is pinned" above).
 
-**The scale path is not wired.** `HFTokenizerAdapter` and `load_h100_web_mixture` exist and are unit-tested with mocks, but `train.py` always builds `PilotTokenizer` plus the synthetic generators. With the `160m`/`410m`/`1b` presets the model gets a 32k-token vocabulary but still trains on the 512-ID synthetic data; real tokenizers and web text reach neither the trainer nor the launcher.
+**Real text is not wired.** `HFTokenizerAdapter` and `load_h100_web_mixture` exist and are unit-tested with mocks, but `train.py` always builds `PilotTokenizer` plus the synthetic generators. With the `160m`/`410m`/`1b` presets the model gets a 32k-token vocabulary but still trains on the 512-ID synthetic data. Wiring real text is a design change, not a flag: `load_h100_web_mixture` returns raw HF document streams, while everything downstream expects `Sample`s with one prompt/target boundary (`BL-11`).
 
 **RL step** (`rl/grpo.py::SSLRLTrainer.train_step`):
 1. Sample `G` thoughts per prefix, without gradients.
@@ -93,3 +93,4 @@ When you touch the listed code, keep the matching test green and extend it for a
 - **Frozen anchor** (`DE-002`), all in `tests/test_rl.py`: `test_ssl_rl_trainer_anti_sabotage_and_smoke_micro_small` checks that `ref_model` has no gradients and is unchanged after training steps (`ref_ema_decay=1.0`); `test_compute_reward_modes_and_stop_gradient` checks that rewards are detached; `test_filters_t0_t1_t2_self_t2_scale` checks that `T2_self` rejects teacher logits. The trainer's own rejection of a `teacher_model` under `T2_self` has no test.
 - **Distributed sync** (`DE-004`): a change to `train.py` or `SSLRLTrainer` must keep the 2-rank Gloo test passing (`tests/test_rl.py::test_torch_distributed_sync_supervised_and_rl`; it uses `mp.spawn`, so it runs on CPU).
 - **FLOPs accounting**: if a variant's step count or adapter changes, update `estimate_inference_flops_per_token` and `tests/test_models.py` together, because every Pareto claim depends on it.
+- **Data reproducibility**: a change to `data/generators.py` or `data/tokenizer.py` must keep `test_generated_datasets_match_committed_artifacts` green; for the natural stream, `test_natural_stream_widens_only_after_original_domain_is_exhausted` checks the prefix-stability rule and `test_natural_stream_matches_pre_widening_fixture` pins the pre-widening output at the point where a template runs out.
