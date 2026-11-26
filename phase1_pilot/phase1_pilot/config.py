@@ -171,6 +171,39 @@ class DataConfig:
 
 
 @dataclass
+class CorpusConfig:
+    """How real-text Regime 2 documents become one-boundary samples.
+
+    A window is `min_prompt_tokens` or more tokens of context, then the thinking
+    boundary, then `min_target_tokens` or more tokens to predict. `eval_fraction` of
+    the documents are held out, chosen by document text.
+
+    `headroom_tokens` is subtracted from every window. It is the room an arm needs for
+    the positions it inserts at the boundary (a thought and its two delimiters, pause
+    tokens, or latent steps), so that no arm's sequence exceeds `max_seq_len`. All
+    arms share one value because they must train on the same windows.
+    """
+
+    min_prompt_tokens: int = 16
+    min_target_tokens: int = 8
+    eval_fraction: float = 0.05
+    headroom_tokens: int = 64
+
+    def __post_init__(self) -> None:
+        if self.min_prompt_tokens < 1:
+            raise ValueError(f"min_prompt_tokens must be >= 1, got {self.min_prompt_tokens}")
+        if self.min_target_tokens < 1:
+            raise ValueError(f"min_target_tokens must be >= 1, got {self.min_target_tokens}")
+        if self.headroom_tokens < 0:
+            raise ValueError(f"headroom_tokens must be >= 0, got {self.headroom_tokens}")
+        if not (0.0 < self.eval_fraction < 1.0):
+            raise ValueError(f"eval_fraction must be in (0, 1), got {self.eval_fraction}")
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class TrainConfig:
     """Supervised / RL training loop configuration."""
 

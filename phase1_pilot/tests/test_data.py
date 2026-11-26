@@ -35,7 +35,7 @@ from phase1_pilot.data.generators import (
     load_h100_web_mixture,
     tokenize_sample,
 )
-from phase1_pilot.data.tokenizer import HFTokenizerAdapter, PilotTokenizer
+from phase1_pilot.data.tokenizer import SPECIAL_TOKENS, HFTokenizerAdapter, PilotTokenizer
 
 
 # ---------------------------------------------------------------------------
@@ -156,54 +156,96 @@ def test_tokenizer_ans_boundary_invariance_and_collate() -> None:
     assert torch.all(batch["input_ids"][pad_positions] == tok.pad_id)
 
 
-def test_hf_tokenizer_adapter_mock() -> None:
-    class _MockHF:
+def test_hf_adapter_keeps_protocol_tokens_distinct_when_native_ones_are_shared(make_fake_hf) -> None:
+    """GPT-2-style tokenizers use one token for pad, bos and eos; the protocol must not."""
+    native = make_fake_hf(native_pad_is_eos=True)
+    assert native.pad_token_id == native.bos_token_id == native.eos_token_id
+
+    adapter = HFTokenizerAdapter(native)
+
+    ids = [
+        adapter.pad_id, adapter.bos_id, adapter.eos_id, adapter.think_start_id,
+        adapter.think_end_id, adapter.pause_id, adapter.sep_id, adapter.ans_id,
+    ]
+    assert len(set(ids)) == 8
+    assert adapter.special_ids == frozenset(ids)
+    assert max(ids) < adapter.vocab_size
+    encoded = adapter.encode("x", add_bos=True, add_eos=True)
+    assert encoded == [adapter.bos_id, *native.encode("x"), adapter.eos_id]
+    collated = adapter.collate([encoded, encoded[:2]])
+    assert collated["input_ids"].tolist() == [encoded, encoded[:2] + [adapter.pad_id]]
+    assert collated["attention_mask"].tolist() == [[1, 1, 1], [1, 1, 0]]
+
+
+def test_hf_adapter_rejects_a_tokenizer_that_aliases_protocol_tokens() -> None:
+    class _Aliasing:
+        unk_token_id = None
+
+        def get_vocab(self) -> dict[str, int]:
+            return {}
+
+        def add_special_tokens(self, mapping: dict[str, list[str]]) -> int:
+            return 0
+
+        def convert_tokens_to_ids(self, token: str) -> int:
+            return 7
+
+    with pytest.raises(ValueError, match="non-distinct"):
+        HFTokenizerAdapter(_Aliasing())
+
+
+def test_hf_adapter_rejects_a_tokenizer_that_does_not_keep_protocol_tokens_whole() -> None:
+    """A vocabulary can hold `<ans>` as an ordinary entry that the tokenizer never emits."""
+
+    class _NeverEmits:
+        unk_token_id = None
+
         def __init__(self) -> None:
-            self._vocab: dict[str, int] = {
-                "<pad>": 0, "<bos>": 1, "<eos>": 2,
-                "hi": 10, "there": 11,
-            }
-            self.pad_token_id = 0
-            self.bos_token_id = 1
-            self.eos_token_id = 2
-            self.unk_token_id = -1
-            self.pad_token = "<pad>"
+            self._vocab = {t: 300 + i for i, t in enumerate(SPECIAL_TOKENS)}
 
         def get_vocab(self) -> dict[str, int]:
             return dict(self._vocab)
 
-        def add_special_tokens(self, d: dict[str, list[str]]) -> int:
-            for t in d.get("additional_special_tokens", []):
-                if t not in self._vocab:
-                    self._vocab[t] = len(self._vocab) + 100
-            return len(d.get("additional_special_tokens", []))
+        def add_special_tokens(self, mapping: dict[str, list[str]]) -> int:
+            return 0
 
-        def convert_tokens_to_ids(self, tok: str) -> int:
-            return self._vocab[tok]
+        def convert_tokens_to_ids(self, token: str) -> int:
+            return self._vocab[token]
 
         def __len__(self) -> int:
-            return len(self._vocab)
+            return 308
 
-        def encode(self, text: str, add_special_tokens: bool = False) -> list[int]:
-            return [self._vocab.get(w, 10) for w in text.split()]
+        def encode(self, text: str, **kwargs) -> list[int]:
+            return list(text.encode("utf-8"))
 
-        def decode(self, ids: list[int], skip_special_tokens: bool = False) -> str:
-            inv = {v: k for k, v in self._vocab.items()}
-            return " ".join(inv.get(i, "?") for i in ids)
+    with pytest.raises(ValueError, match="single token"):
+        HFTokenizerAdapter(_NeverEmits())
 
-    adapter = HFTokenizerAdapter(_MockHF())
-    assert adapter.pad_id == 0
-    assert adapter.bos_id == 1
-    assert adapter.eos_id == 2
-    assert adapter.think_start_id >= 100
-    assert adapter.think_end_id >= 100
-    assert adapter.pause_id >= 100
-    assert adapter.sep_id >= 100
-    assert adapter.ans_id >= 100
-    encoded = adapter.encode("hi there", add_bos=True, add_eos=True)
-    assert encoded == [1, 10, 11, 2]
-    collated = adapter.collate([encoded, [1, 10, 2]])
-    assert collated["input_ids"].shape == (2, 4)
+
+def test_hf_adapter_vocab_size_covers_every_id(make_fake_hf) -> None:
+    class _Sparse(make_fake_hf):
+        def __len__(self) -> int:  # reports fewer entries than its highest ID
+            return 10
+
+    adapter = HFTokenizerAdapter(_Sparse())
+
+    assert adapter.vocab_size == max(adapter.protocol_ids().values()) + 1
+
+
+def test_encode_corpus_keeps_marker_strings_as_text(any_tokenizer) -> None:
+    text = "pad with '<pad>' then <think>"
+
+    ids = any_tokenizer.encode_corpus(text)
+
+    assert not set(ids) & any_tokenizer.special_ids
+    assert any_tokenizer.decode(ids) == text
+    assert set(any_tokenizer.encode(text)) & any_tokenizer.special_ids, "plain encode still tokenizes markers"
+
+
+def test_pilot_encode_corpus_matches_encode_on_marker_free_text() -> None:
+    tok = PilotTokenizer()
+    text = "def f(x):\n    return (a+b) % 17 == N3 -> the series"
+    assert tok.encode_corpus(text) == tok.encode(text)
 
 
 # ---------------------------------------------------------------------------

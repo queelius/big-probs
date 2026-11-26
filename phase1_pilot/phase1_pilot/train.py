@@ -31,6 +31,7 @@ import torch.nn.functional as F
 from torch import Tensor
 
 from phase1_pilot.config import (
+    CorpusConfig,
     DataConfig,
     ModelConfig,
     RLConfig,
@@ -40,6 +41,7 @@ from phase1_pilot.config import (
     VALID_REWARDS,
     VALID_VARIANTS,
 )
+from phase1_pilot.data.tokenizer import PILOT_TOKENIZER_SPEC
 from phase1_pilot.rl.grpo import (
     SSLRLTrainer,
     _all_reduce_model_grads,
@@ -257,6 +259,7 @@ def train_supervised(
     *,
     pad_id: int = 0,
     step_callback: Callable[[int, dict[str, Any]], None] | None = None,
+    checkpoint_extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Train a supervised baseline (B1 NTP, B2 Large NTP, B3 Pause, B4 Continuous Latent).
 
@@ -344,6 +347,7 @@ def train_supervised(
                 "steps": cfg.max_steps,
                 "final_train_loss": history[-1]["train_loss"],
                 "final_val_loss": final_val_loss,
+                **(checkpoint_extra or {}),
             },
             ckpt_file,
         )
@@ -372,6 +376,7 @@ def train_ssl_rl(
     temperature: float = 1.0,
     continuation_sft_weight: float = 0.1,
     step_callback: Callable[[int, dict[str, Any]], None] | None = None,
+    checkpoint_extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Train a model with SSL-as-RL (Dr. GRPO + DAPO Clip-Higher + Frozen Anchor)."""
     train_cfg = train_cfg or TrainConfig()
@@ -455,6 +460,7 @@ def train_ssl_rl(
                 "steps": train_cfg.max_steps,
                 "final_metrics": history[-1],
                 "final_val_loss": final_val_loss,
+                **(checkpoint_extra or {}),
             },
             ckpt_file,
         )
@@ -519,25 +525,65 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--n-eval-samples", type=int, default=200)
     p.add_argument("--max-seq-len", type=int, default=256)
     p.add_argument("--regime", choices=("regime1", "regime2", "regime3", "all"), default="regime1")
+    p.add_argument(
+        "--tokenizer",
+        default=PILOT_TOKENIZER_SPEC,
+        help="'pilot' (built-in byte+symbol tokenizer) or a HuggingFace tokenizer name or path.",
+    )
+    p.add_argument(
+        "--corpus",
+        default=None,
+        help="JSON Lines file of real-text documents (string fields key, text, source). "
+        "Replaces the synthetic Regime 2 stream in `train` and `eval_natural`.",
+    )
+    corpus_defaults = CorpusConfig()
+    p.add_argument("--corpus-eval-fraction", type=float, default=corpus_defaults.eval_fraction)
+    p.add_argument("--corpus-headroom-tokens", type=int, default=corpus_defaults.headroom_tokens)
     return p
 
 
-def _build_dataloaders_from_args(args: argparse.Namespace):
-    """Build deterministic DataLoaders from phase1_pilot.data (sharded when distributed)."""
+def corpus_config_from_args(args: argparse.Namespace) -> CorpusConfig | None:
+    """The real-text windowing settings of this run, or `None` for synthetic Regime 2."""
+    if args.corpus is None:
+        return None
+    return CorpusConfig(
+        eval_fraction=args.corpus_eval_fraction,
+        headroom_tokens=args.corpus_headroom_tokens,
+    )
+
+
+def build_dataloaders(args: argparse.Namespace, tokenizer: Any):
+    """Build deterministic DataLoaders from phase1_pilot.data (sharded when distributed).
+
+    Returns `(train_loader, val_loader, corpus_stats)`; `corpus_stats` is `None` unless
+    `--corpus` supplies Regime 2.
+    """
     from functools import partial
 
     from torch.utils.data import DataLoader, DistributedSampler
 
-    from phase1_pilot.data import PilotTokenizer, build_stratified_datasets, collate_batch
+    from phase1_pilot.data import build_stratified_datasets, collate_batch
+    from phase1_pilot.data.corpus import build_corpus_splits, read_corpus_jsonl
+    from phase1_pilot.data.generators import natural_train_count
 
-    tokenizer = PilotTokenizer()
     data_cfg = DataConfig(
         seed=args.seed,
         n_train_samples=args.n_train_samples,
         n_eval_samples=args.n_eval_samples,
         max_seq_len=args.max_seq_len,
     )
-    datasets = build_stratified_datasets(data_cfg, tokenizer)
+    natural = None
+    if args.corpus is not None:
+        natural = build_corpus_splits(
+            read_corpus_jsonl(args.corpus),
+            tokenizer,
+            max_seq_len=args.max_seq_len,
+            n_train=natural_train_count(args.n_train_samples),
+            n_eval=args.n_eval_samples,
+            seed=args.seed,
+            cfg=corpus_config_from_args(args),
+        )
+    datasets = build_stratified_datasets(data_cfg, tokenizer, natural=natural)
 
     train_ds = datasets["train"]
     if args.regime == "regime2":
@@ -577,38 +623,136 @@ def _build_dataloaders_from_args(args: argparse.Namespace):
         shuffle=False,
         collate_fn=collate_fn,
     )
-    return tokenizer, train_loader, val_loader
+    return train_loader, val_loader, (natural.stats if natural is not None else None)
 
 
-def main(argv: list[str] | None = None) -> dict[str, Any]:
-    """CLI entrypoint for Phase 1 pilot training (single-process or torchrun DDP)."""
-    args = build_arg_parser().parse_args(argv)
+def resolve_model_config(args: argparse.Namespace, tokenizer: Any, **overrides: Any) -> ModelConfig:
+    """The model this run builds. Its vocabulary is the tokenizer's, for every preset."""
+    fields: dict[str, Any] = {
+        "variant": args.variant,
+        "n_pause_tokens": args.n_pause_tokens,
+        "n_latent_steps": args.n_latent_steps,
+        "max_thought_len": args.max_thought_len,
+        "max_seq_len": args.max_seq_len,
+        "vocab_size": tokenizer.vocab_size,
+        **overrides,
+    }
+    return ModelConfig.preset(fields.pop("preset", args.preset), **fields)
+
+
+def data_protocol(
+    tokenizer_spec: str,
+    tokenizer: Any,
+    corpus_cfg: CorpusConfig | None,
+    max_seq_len: int,
+) -> dict[str, Any]:
+    """What a checkpoint must share with a run that loads it.
+
+    `corpus` is the recipe that turns documents into windows (`None` for synthetic
+    Regime 2). Arms that start from one another must use the same recipe: a different
+    `eval_fraction` moves training documents into the eval split, and any other
+    difference means the arms no longer train or evaluate on the same windows.
+    """
+    return {
+        "tokenizer": tokenizer_spec,
+        "tokenizer_fingerprint": tokenizer.fingerprint(),
+        "vocab_size": tokenizer.vocab_size,
+        "special_token_ids": tokenizer.protocol_ids(),
+        "corpus": None if corpus_cfg is None else {**corpus_cfg.to_dict(), "max_seq_len": max_seq_len},
+    }
+
+
+def _load_compatible_state(path: str, protocol: dict[str, Any], role: str) -> dict[str, Tensor]:
+    """Load a checkpoint's weights after checking it was trained under `protocol`.
+
+    Weights are only meaningful with the token IDs they were trained on, and an arm
+    must not evaluate on corpus documents its starting checkpoint trained on.
+    """
+    from phase1_pilot.data.tokenizer import PilotTokenizer
+
+    ckpt = torch.load(path, map_location="cpu", weights_only=True)
+    saved = ckpt.get("data_protocol") if isinstance(ckpt, dict) else None
+    if saved is None:
+        # Checkpoints written before the protocol was recorded all used PilotTokenizer.
+        saved = data_protocol(PILOT_TOKENIZER_SPEC, PilotTokenizer(), None, max_seq_len=0)
+    if saved["tokenizer_fingerprint"] != protocol["tokenizer_fingerprint"]:
+        raise ValueError(
+            f"{role} checkpoint {path} was trained with tokenizer {saved['tokenizer']!r} "
+            f"(vocab {saved['vocab_size']}), but this run uses {protocol['tokenizer']!r} "
+            f"(vocab {protocol['vocab_size']}): their token IDs differ"
+        )
+    saved_corpus, corpus = saved.get("corpus"), protocol["corpus"]
+    if saved_corpus is not None and corpus is not None and saved_corpus != corpus:
+        differing = ", ".join(
+            f"{k}: {saved_corpus.get(k)} vs {corpus.get(k)}"
+            for k in sorted(set(saved_corpus) | set(corpus))
+            if saved_corpus.get(k) != corpus.get(k)
+        )
+        raise ValueError(
+            f"{role} checkpoint {path} was trained on corpus windows cut differently from this "
+            f"run's ({differing}). The arms would not share windows, and a different "
+            f"eval_fraction lets this run evaluate on documents the checkpoint trained on"
+        )
+    return ckpt["model_state_dict"] if isinstance(ckpt, dict) and "model_state_dict" in ckpt else ckpt
+
+
+def _describe_corpus(stats: Any) -> str:
+    parts = []
+    for split in ("train", "eval"):
+        sources = ", ".join(
+            f"{src} {n} windows / {stats.tokens[split][src]} tokens"
+            for src, n in sorted(stats.windows[split].items())
+        )
+        parts.append(f"{split}: {sources}")
+    parts.append(
+        f"read {stats.documents_read} documents, skipped {stats.skipped_duplicate} duplicate, "
+        f"{stats.skipped_protocol_token} with protocol tokens, {stats.skipped_short} too short"
+    )
+    return "[corpus] " + " | ".join(parts)
+
+
+def run_training(args: argparse.Namespace, tokenizer: Any) -> dict[str, Any]:
+    """Train one arm as `args` describes, with `tokenizer` as the source of IDs and vocab size."""
     device = resolve_device(args.device)
     did_init_dist = init_distributed(device)
 
     try:
-        from phase1_pilot.models import build_model
+        from phase1_pilot.models import build_model, default_extra_steps_for_config
 
-        tokenizer, train_loader, val_loader = _build_dataloaders_from_args(args)
-        vocab_size = tokenizer.vocab_size if args.preset.startswith("micro") else None
+        corpus_cfg = corpus_config_from_args(args)
+        if (
+            args.mode == "rl"
+            and corpus_cfg is not None
+            and args.n_ahead > corpus_cfg.min_target_tokens
+        ):
+            raise ValueError(
+                f"n_ahead={args.n_ahead} exceeds the corpus min_target_tokens="
+                f"{corpus_cfg.min_target_tokens}: some windows would be scored on a shorter horizon"
+            )
 
-        model_overrides: dict[str, Any] = {
-            "variant": args.variant,
-            "n_pause_tokens": args.n_pause_tokens,
-            "n_latent_steps": args.n_latent_steps,
-            "max_thought_len": args.max_thought_len,
-            "max_seq_len": args.max_seq_len,
-        }
-        if vocab_size is not None:
-            model_overrides["vocab_size"] = vocab_size
+        train_loader, val_loader, corpus_stats = build_dataloaders(args, tokenizer)
+        if corpus_stats is not None and _is_main_process():
+            print(_describe_corpus(corpus_stats))
+        protocol = data_protocol(args.tokenizer, tokenizer, corpus_cfg, args.max_seq_len)
 
         set_seed(args.seed)
-        model_cfg = ModelConfig.preset(args.preset, **model_overrides)
-        model = build_model(model_cfg)
+        model_cfg = resolve_model_config(args, tokenizer)
+        if corpus_cfg is not None:
+            # An upper bound on the positions this arm inserts at the boundary.
+            inserted = default_extra_steps_for_config(model_cfg) + (
+                args.thought_len + 2 if args.mode == "rl" else 0
+            )
+            if inserted > corpus_cfg.headroom_tokens:
+                raise ValueError(
+                    f"this arm can insert {inserted} positions at the boundary, more than the "
+                    f"corpus headroom_tokens={corpus_cfg.headroom_tokens}: a full window would "
+                    f"exceed max_seq_len={args.max_seq_len}"
+                )
+        model = build_model(model_cfg, pause_token_id=tokenizer.pause_id)
+        checkpoint_extra = {"model_config": model_cfg.to_dict(), "data_protocol": protocol}
 
         if args.init_checkpoint:
-            ckpt = torch.load(args.init_checkpoint, map_location="cpu", weights_only=False)
-            state = ckpt["model_state_dict"] if isinstance(ckpt, dict) and "model_state_dict" in ckpt else ckpt
+            state = _load_compatible_state(args.init_checkpoint, protocol, role="init")
             model.load_state_dict(state, strict=False)
 
         train_cfg = TrainConfig(
@@ -626,29 +770,30 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
         )
 
         if args.mode == "supervised":
-            res = train_supervised(model, train_loader, val_loader, train_cfg, pad_id=tokenizer.pad_id)
+            res = train_supervised(
+                model,
+                train_loader,
+                val_loader,
+                train_cfg,
+                pad_id=tokenizer.pad_id,
+                checkpoint_extra=checkpoint_extra,
+            )
             if _is_main_process():
                 print(
                     f"[supervised] steps={res['steps']} "
                     f"train_loss={res['final_train_loss']:.4f} "
                     f"val_loss={res['final_val_loss']:.4f}"
                 )
-            return res
+            return {**res, "model": model, "corpus_stats": corpus_stats}
 
         teacher_model = None
         if args.filter_type == "T2_scale":
-            t_overrides: dict[str, Any] = {"variant": "ntp", "max_seq_len": args.max_seq_len}
-            if vocab_size is not None:
-                t_overrides["vocab_size"] = vocab_size
-            teacher_cfg = ModelConfig.preset(args.teacher_preset, **t_overrides)
-            teacher_model = build_model(teacher_cfg)
+            teacher_cfg = resolve_model_config(
+                args, tokenizer, preset=args.teacher_preset, variant="ntp"
+            )
+            teacher_model = build_model(teacher_cfg, pause_token_id=tokenizer.pause_id)
             if args.teacher_checkpoint:
-                t_ckpt = torch.load(args.teacher_checkpoint, map_location="cpu", weights_only=False)
-                t_state = (
-                    t_ckpt["model_state_dict"]
-                    if isinstance(t_ckpt, dict) and "model_state_dict" in t_ckpt
-                    else t_ckpt
-                )
+                t_state = _load_compatible_state(args.teacher_checkpoint, protocol, role="teacher")
                 teacher_model.load_state_dict(t_state, strict=False)
 
         rl_cfg = RLConfig(
@@ -680,6 +825,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
             think_end_id=tokenizer.think_end_id,
             temperature=args.temperature,
             continuation_sft_weight=args.continuation_sft_weight,
+            checkpoint_extra=checkpoint_extra,
         )
         if _is_main_process():
             fm = res["final_metrics"]
@@ -689,9 +835,17 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
                 f"mean_reward={fm['mean_reward']:.4f} zero_var={fm['zero_var_frac']:.2f} "
                 f"drift={fm['nothought_nll_drift']:+.4f}"
             )
-        return res
+        return {**res, "model": model, "corpus_stats": corpus_stats}
     finally:
         cleanup_distributed(did_init_dist)
+
+
+def main(argv: list[str] | None = None) -> dict[str, Any]:
+    """CLI entrypoint for Phase 1 pilot training (single-process or torchrun DDP)."""
+    from phase1_pilot.data.tokenizer import build_tokenizer
+
+    args = build_arg_parser().parse_args(argv)
+    return run_training(args, build_tokenizer(args.tokenizer))
 
 
 if __name__ == "__main__":
