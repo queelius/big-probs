@@ -2,8 +2,8 @@
 
 > **Read This First (<60 seconds):** This document is the authoritative entry point for any human researcher or fresh AI session resuming the `big-probs` program from zero context. Follow [`research/PROCEDURE.md`](PROCEDURE.md) for operating discipline.
 
-- **Last Updated:** `2026-11-24`
-- **Current Phase:** **Phase 1 (Track 1 Small-Model Latent-CoT RL Pilot)**: CPU micro-pilot (`EXP-001`) complete, audited, and published; H100 Stage 1 (`EXP-002`) launcher now runs at its default dataset sizes, but on synthetic Regime 2 text only. The real-text path `EXP-002` specifies is wired as far as a local corpus file (`train.py --tokenizer` / `--corpus`, CPU-tested with stand-in documents). Building that file from the Hub, choosing the tokenizer, and passing both through the launcher are still open (§5 item 9, `BL-11`).
+- **Last Updated:** `2026-11-27`
+- **Current Phase:** **Phase 1 (Track 1 Small-Model Latent-CoT RL Pilot)**: CPU micro-pilot (`EXP-001`) complete, audited, and published, but its Regime 1 results sit below the prompt-blind floor and are uninformative about reasoning (`EXP-006`, `DE-007`); no micro base model has yet cleared its task floor (`BL-12`); H100 Stage 1 (`EXP-002`) launcher now runs at its default dataset sizes, but on synthetic Regime 2 text only. The real-text path `EXP-002` specifies is wired as far as a local corpus file (`train.py --tokenizer` / `--corpus`, CPU-tested with stand-in documents). Building that file from the Hub, choosing the tokenizer, and passing both through the launcher are still open (§5 item 9, `BL-11`).
 - **Repositories & Artifacts:**
   - **GitHub:** [`https://github.com/queelius/big-probs`](https://github.com/queelius/big-probs)
   - **HuggingFace Models:** [`https://huggingface.co/queelius/big-probs-phase1-models`](https://huggingface.co/queelius/big-probs-phase1-models)
@@ -35,12 +35,12 @@ Standard self-supervised learning (next-token prediction) scaled because it is t
 
 > **Scope Warning:** `EXP-001` is a **0.98M vs. 2.85M CPU proof-of-life** (80 supervised + 20 RL steps, 600 train samples). Its `FALSIFIED` verdict validates the diagnostic pipeline and surfaces real small-model RL dynamics, but does **not** falsify the 160M / 410M / 1.0B H100 hypothesis (`EXP-002`).
 
-- **Track 1 §5.5 Verdict (`EXP-001`):** `FALSIFIED` — best small-model candidate `I2-Hybrid` reached `3.1%` exact acc at `2.51×` `B2` FLOPs vs. `B2` (`6.2%`, `1.00×`) and `B3` (`0.0%`, `1.71×`).
-- **Two Positive Micro-Scale Signals Already Observed:**
-  1. **Strictly Proper Brier Eliminates Variance Starvation (`H1a`):** Binary exact-match `RL-R1` hit `sigma=0` fraction = **`1.00`** (total gradient starvation), whereas Brier-anchored `RL-R3` and `I2-Hybrid` maintained `sigma=0` fraction = **`0.00`** with bounded no-thought NLL drift (`+0.0559` and `-0.5746` nats) and calibrated Regime 3 ECE (`0.040` and `0.032`).
-  2. **Continuous$\to$Hybrid (`I2-Hybrid`) Leads Small-Model Arms:** Matched `B2` Hard-BPB (`2.271` vs. `2.266`; `B1 = 2.318`), beat `B1`/`B2`/`B3` on OOD `pass@16` (`37.5%` vs. `31.2%`), and showed strong format-matched truncation sensitivity (`ΔNLL_trunc = +2.732` nats), though prompt-specific swap sensitivity has not yet emerged (`ΔNLL_swap = -0.003` nats) at 80+20 micro-steps.
+- **Track 1 §5.5 Verdict (`EXP-001`):** `FALSIFIED` as computed: best small-model candidate `I2-Hybrid` reached `3.1%` exact acc at `2.51×` `B2` FLOPs vs. `B2` (`6.2%`, `1.00×`) and `B3` (`0.0%`, `1.71×`). **Reinterpreted `2026-11-26` (`EXP-006`, `DE-007`):** every arm scored worse on Regime 1 than a predictor that never reads the prompt (NLL `3.362`–`3.452` vs. `3.150`), so the verdict and every Regime 1 comparison are uninformative about reasoning in either direction.
+- **What survives from `EXP-001`:** (1) a mechanism observation: binary `R1` reward had `sigma=0` fraction `1.00` in this run, from a policy at chance (`DE-001`), while `R3_brier` and `I2-Hybrid` give `0.00`. That shows the continuous reward varies within groups, not that its variation is useful. (2) Pipeline checks: anchor wiring (`DE-002`), train/eval parity (`DE-003`), and FLOPs accounting. The two "positive signals" this section used to list (`I2-Hybrid` matching `B2` Hard-BPB and leading OOD `pass@16`) are withdrawn: the Hard-BPB gap lies above the prompt-blind floor, and `37.5%` OOD `pass@16` is below the `39.8%` of uniform guessing over node IDs (and the `99.85%` of guessing among the three listed candidates).
+- **`EXP-006` (Regime 1 learnability scoping, `7.29` CPU-hrs summed over overlapping runs):** no supervised NTP micro model left its task's structural floor in 13 probes (3k–20k steps), except `python_trace` `d=1` trained alone (`17.0%` vs. `6.0%`). A single 3-pair lookup plateaus at the `1/3` copy floor for 20k steps. The micro testbed cannot test thought arms until a base model is competent (`BL-12`). Summary: [`phase1_pilot/results/exp006_learnability_summary.json`](../phase1_pilot/results/exp006_learnability_summary.json).
+- **`EXP-007` (trainer check on Zoology MQAR, preregistered, `3.95` CPU-hrs summed):** rule A. `micro-small` with default `train_supervised` settings learns MQAR (`1.000` test accuracy with 4 labelled queries per row), so a general trainer or backbone defect is unlikely. With one labelled query per row it fits its training batches and stays at `0.20` held-out (likely memorization; train-set accuracy not measured). The `EXP-006` pointer model copies a listed literal: its greedy answer changes with the queried key in only `3`–`5.5%` of prompts. Summary: [`phase1_pilot/results/exp007_trainer_check_summary.json`](../phase1_pilot/results/exp007_trainer_check_summary.json).
 
-See [`research/EXPERIMENTS.md`](EXPERIMENTS.md) for the full 7-arm table and post-mortem.
+See [`research/EXPERIMENTS.md`](EXPERIMENTS.md) for the full 7-arm table, the `EXP-001` correction note, and the `EXP-006` and `EXP-007` post-mortems.
 
 ---
 
@@ -57,7 +57,7 @@ See [`research/EXPERIMENTS.md`](EXPERIMENTS.md) for the full 7-arm table and pos
 
 ## 5. What Is Currently Missing / Open Blind Spots
 
-1. **No H100 Capacity-Regime Data Yet:** At 0.98M / 80 steps, greedy accuracy is `0.0%–6.2%` and `ΔNLL_swap ≈ 0`. We cannot confirm or falsify `H1`/`H1b` until models reach non-trivial Regime 1 accuracy (`>30%` ID) on `160M` / `410M` / `1.0B` (`EXP-002`).
+1. **No H100 Capacity-Regime Data Yet, and No Competent Micro Base Model:** At 0.98M / 80 steps, greedy accuracy is `0.0%–6.2%` and `ΔNLL_swap ≈ 0`; `EXP-006` found that 3k–20k steps do not move a micro model off its task floor either (`BL-12`). We cannot confirm or falsify `H1`/`H1b` until models reach non-trivial Regime 1 accuracy (`>30%` ID) on `160M` / `410M` / `1.0B` (`EXP-002`).
 2. **Single-Seed Only (`seed=42`):** Zero multi-seed confidence intervals on `EXP-001`.
 3. **No Real Web-Text Regime 2 Evaluation:** `EXP-001` uses synthetic Regime 2 streams; real OpenWebMath / Stack v2 / FineWeb-Edu (`40/40/20`) has not been evaluated yet.
 4. **No `T0`/`T1`/`T2-self`/`T2-scale` Comparative Ablation Yet:** `EXP-001` only exercised `T2-self` (testing `R1` vs. `R3` and `I1` vs. `I2`).
@@ -103,7 +103,7 @@ NPROC_PER_NODE=4 OUT_ROOT=runs/h100_stage1 bash scripts/launch_h100_stage1.sh
 ## 7. First 3 Decisions on Resume
 
 1. **Decision 1 — Compute Track (Local CPU Today vs. Rent H100 Now):**
-   - *If staying CPU-only today ($0):* Pick `BL-01` (longer multi-seed CPU micro-run to test whether `ΔNLL_swap > 0` emerges once `micro-small` leaves uniform logits), `BL-02` (`T0`/`T1`/`T2-self`/`T2-scale` + `R2` vs. `R3` CPU ablation), or `BL-03`/`BL-04` (runnable CPU synthetic testbeds for `H2` stealth Goodharting and `H3` AIPW causal replay). See [`research/BACKLOG.md`](BACKLOG.md).
+   - *If staying CPU-only today ($0):* Pick `BL-12` (find a Regime 1 task and budget where `B1` clears its structural floor; step 1, the trainer check, passed in `EXP-007`; step 2 tests label density on the pointer task and needs a preregistration) or `BL-03`/`BL-04` (runnable CPU synthetic testbeds for `H2` stealth Goodharting and `H3` AIPW causal replay). `BL-01` and `BL-02` are blocked on `BL-12` since `EXP-006`. See [`research/BACKLOG.md`](BACKLOG.md).
    - *If provisioning 1–4× H100 (~$80–$150 cloud budget):* First wire the real-text Regime 2 path decided on `2026-11-26` (`BL-11`, §5 item 9), write `scripts/eval_stage1.py` (`BL-07`), tune adaptive/sparse inference FLOPs so `I2-Hybrid` can hit `≤ 1.0× B2 FLOPs`, preregister `EXP-002` using [`research/templates/EXP_PREREG.md`](templates/EXP_PREREG.md), and launch `scripts/launch_h100_stage1.sh`.
 2. **Decision 2 — Fix Adaptive Inference FLOPs Budget Before `EXP-002`:**
    - Decide whether `EXP-002` evaluates `I2-Hybrid` and `RL-R3` with fixed short thoughts (`thought_len=2–4`) OR entropy/variance-gated adaptive inference (thinking only on top-20% tokens at eval time, cutting effective `extra_steps_per_target` by ~5× to achieve `≤ 1.0× B2` FLOPs parity).

@@ -1,0 +1,462 @@
+{
+  "exp_id": "EXP-007",
+  "scope": "Trainer and backbone check (BL-12 step 1): can micro-small LlamaLM + train_supervised learn Zoology-style MQAR?",
+  "preregistered": true,
+  "preregistration_commit": "6180c3a",
+  "hardware": "AMD Ryzen 5 7430U (6 cores / 12 threads), CPU-only; 3 arms in parallel at 4 torch threads each; host load average about 20 during the runs",
+  "compute_note": "compute_hours sums each arm's train_seconds; the arms ran concurrently (about 80 min wall clock), against a preregistered estimate of about 25 min",
+  "compute_hours": 3.95,
+  "decision": {
+    "primary_rule": "A",
+    "M1_final_test_acc": 1.0,
+    "secondary": {
+      "M2": "plateaus",
+      "M3": "learns"
+    }
+  },
+  "arms": [
+    {
+      "arm": "M1",
+      "name": "mqar_basic",
+      "command": "uv run python scripts/trainer_check_mqar.py --output <out.json>",
+      "config": {
+        "preset": "micro-small",
+        "n_keys": 127,
+        "n_values": 128,
+        "seq_len": 64,
+        "num_kv_pairs": 4,
+        "supervised_queries": null,
+        "n_train": 10000,
+        "n_test": 1000,
+        "steps": 10000,
+        "batch_size": 32,
+        "lr": 0.001,
+        "eval_every": 500,
+        "seed": 42,
+        "threads": 4
+      },
+      "n_params": 920704,
+      "train_seconds": 4752.4,
+      "final_train_loss": 1.419598629581742e-05,
+      "final_test_acc": 1.0,
+      "first_step_test_acc_ge_0.99": 3500,
+      "copy_floor_1_over_K": 0.25,
+      "plateaus": false,
+      "curve": [
+        {
+          "step": 500,
+          "train_loss": 2.684605836868286,
+          "test_acc": 0.258
+        },
+        {
+          "step": 1000,
+          "train_loss": 0.2623329758644104,
+          "test_acc": 0.914
+        },
+        {
+          "step": 1500,
+          "train_loss": 0.18945468962192535,
+          "test_acc": 0.9365
+        },
+        {
+          "step": 2000,
+          "train_loss": 0.27830836176872253,
+          "test_acc": 0.92675
+        },
+        {
+          "step": 2500,
+          "train_loss": 0.1659645140171051,
+          "test_acc": 0.95375
+        },
+        {
+          "step": 3000,
+          "train_loss": 0.09712286293506622,
+          "test_acc": 0.9885
+        },
+        {
+          "step": 3500,
+          "train_loss": 0.022732537239789963,
+          "test_acc": 0.99325
+        },
+        {
+          "step": 4000,
+          "train_loss": 0.07287817448377609,
+          "test_acc": 0.995
+        },
+        {
+          "step": 4500,
+          "train_loss": 0.005066176410764456,
+          "test_acc": 0.993
+        },
+        {
+          "step": 5000,
+          "train_loss": 0.0014872436877340078,
+          "test_acc": 0.99725
+        },
+        {
+          "step": 5500,
+          "train_loss": 0.0002649390371516347,
+          "test_acc": 0.9975
+        },
+        {
+          "step": 6000,
+          "train_loss": 0.0027430299669504166,
+          "test_acc": 0.99875
+        },
+        {
+          "step": 6500,
+          "train_loss": 0.0002254135615658015,
+          "test_acc": 0.99975
+        },
+        {
+          "step": 7000,
+          "train_loss": 5.782151856692508e-05,
+          "test_acc": 0.99925
+        },
+        {
+          "step": 7500,
+          "train_loss": 6.380275590345263e-05,
+          "test_acc": 1.0
+        },
+        {
+          "step": 8000,
+          "train_loss": 9.598721953807399e-05,
+          "test_acc": 1.0
+        },
+        {
+          "step": 8500,
+          "train_loss": 3.4821194276446477e-05,
+          "test_acc": 1.0
+        },
+        {
+          "step": 9000,
+          "train_loss": 1.5299483493436128e-05,
+          "test_acc": 1.0
+        },
+        {
+          "step": 9500,
+          "train_loss": 1.3589713489636779e-05,
+          "test_acc": 1.0
+        },
+        {
+          "step": 10000,
+          "train_loss": 1.419598629581742e-05,
+          "test_acc": 1.0
+        }
+      ]
+    },
+    {
+      "arm": "M2",
+      "name": "mqar_1q",
+      "command": "uv run python scripts/trainer_check_mqar.py --supervised-queries 1 --output <out.json>",
+      "config": {
+        "preset": "micro-small",
+        "n_keys": 127,
+        "n_values": 128,
+        "seq_len": 64,
+        "num_kv_pairs": 4,
+        "supervised_queries": 1,
+        "n_train": 10000,
+        "n_test": 1000,
+        "steps": 10000,
+        "batch_size": 32,
+        "lr": 0.001,
+        "eval_every": 500,
+        "seed": 42,
+        "threads": 4
+      },
+      "n_params": 920704,
+      "train_seconds": 4772.1,
+      "final_train_loss": 0.00023111043265089393,
+      "final_test_acc": 0.20225,
+      "first_step_test_acc_ge_0.99": null,
+      "copy_floor_1_over_K": 0.25,
+      "plateaus": true,
+      "curve": [
+        {
+          "step": 500,
+          "train_loss": 3.8837180137634277,
+          "test_acc": 0.12175
+        },
+        {
+          "step": 1000,
+          "train_loss": 2.4002127647399902,
+          "test_acc": 0.1725
+        },
+        {
+          "step": 1500,
+          "train_loss": 2.1221518516540527,
+          "test_acc": 0.18625
+        },
+        {
+          "step": 2000,
+          "train_loss": 0.9997486472129822,
+          "test_acc": 0.18575
+        },
+        {
+          "step": 2500,
+          "train_loss": 1.834755539894104,
+          "test_acc": 0.18725
+        },
+        {
+          "step": 3000,
+          "train_loss": 0.7431842684745789,
+          "test_acc": 0.18975
+        },
+        {
+          "step": 3500,
+          "train_loss": 0.349467933177948,
+          "test_acc": 0.18925
+        },
+        {
+          "step": 4000,
+          "train_loss": 0.6057169437408447,
+          "test_acc": 0.19175
+        },
+        {
+          "step": 4500,
+          "train_loss": 0.16370944678783417,
+          "test_acc": 0.18275
+        },
+        {
+          "step": 5000,
+          "train_loss": 0.27400678396224976,
+          "test_acc": 0.194
+        },
+        {
+          "step": 5500,
+          "train_loss": 0.09579337388277054,
+          "test_acc": 0.19175
+        },
+        {
+          "step": 6000,
+          "train_loss": 0.2012115716934204,
+          "test_acc": 0.198
+        },
+        {
+          "step": 6500,
+          "train_loss": 0.005644369404762983,
+          "test_acc": 0.20275
+        },
+        {
+          "step": 7000,
+          "train_loss": 0.006044128909707069,
+          "test_acc": 0.20175
+        },
+        {
+          "step": 7500,
+          "train_loss": 0.0008190205553546548,
+          "test_acc": 0.2
+        },
+        {
+          "step": 8000,
+          "train_loss": 0.00046779451076872647,
+          "test_acc": 0.2015
+        },
+        {
+          "step": 8500,
+          "train_loss": 0.00036972484667785466,
+          "test_acc": 0.20275
+        },
+        {
+          "step": 9000,
+          "train_loss": 0.0003651793522294611,
+          "test_acc": 0.20225
+        },
+        {
+          "step": 9500,
+          "train_loss": 0.00023918875376693904,
+          "test_acc": 0.2025
+        },
+        {
+          "step": 10000,
+          "train_loss": 0.00023111043265089393,
+          "test_acc": 0.20225
+        }
+      ]
+    },
+    {
+      "arm": "M3",
+      "name": "mqar_smallvocab",
+      "command": "uv run python scripts/trainer_check_mqar.py --n-keys 16 --n-values 19 --num-kv-pairs 3 --output <out.json>",
+      "config": {
+        "preset": "micro-small",
+        "n_keys": 16,
+        "n_values": 19,
+        "seq_len": 64,
+        "num_kv_pairs": 3,
+        "supervised_queries": null,
+        "n_train": 10000,
+        "n_test": 1000,
+        "steps": 10000,
+        "batch_size": 32,
+        "lr": 0.001,
+        "eval_every": 500,
+        "seed": 42,
+        "threads": 4
+      },
+      "n_params": 864384,
+      "train_seconds": 4692.7,
+      "final_train_loss": 6.994827799644554e-06,
+      "final_test_acc": 1.0,
+      "first_step_test_acc_ge_0.99": 1000,
+      "copy_floor_1_over_K": 0.3333333333333333,
+      "plateaus": false,
+      "curve": [
+        {
+          "step": 500,
+          "train_loss": 0.13918524980545044,
+          "test_acc": 0.971
+        },
+        {
+          "step": 1000,
+          "train_loss": 0.1402622014284134,
+          "test_acc": 0.995
+        },
+        {
+          "step": 1500,
+          "train_loss": 0.002181839197874069,
+          "test_acc": 0.9986666666666667
+        },
+        {
+          "step": 2000,
+          "train_loss": 0.0006604960653930902,
+          "test_acc": 0.9993333333333333
+        },
+        {
+          "step": 2500,
+          "train_loss": 0.00025063296197913587,
+          "test_acc": 0.9976666666666667
+        },
+        {
+          "step": 3000,
+          "train_loss": 0.00016966478142421693,
+          "test_acc": 0.9996666666666667
+        },
+        {
+          "step": 3500,
+          "train_loss": 0.00044224748853594065,
+          "test_acc": 0.9913333333333333
+        },
+        {
+          "step": 4000,
+          "train_loss": 0.0001410463883075863,
+          "test_acc": 0.9983333333333333
+        },
+        {
+          "step": 4500,
+          "train_loss": 5.711539415642619e-05,
+          "test_acc": 1.0
+        },
+        {
+          "step": 5000,
+          "train_loss": 3.7480622268049046e-05,
+          "test_acc": 1.0
+        },
+        {
+          "step": 5500,
+          "train_loss": 2.7858528483193368e-05,
+          "test_acc": 1.0
+        },
+        {
+          "step": 6000,
+          "train_loss": 2.3210754079627804e-05,
+          "test_acc": 1.0
+        },
+        {
+          "step": 6500,
+          "train_loss": 1.8317074136575684e-05,
+          "test_acc": 1.0
+        },
+        {
+          "step": 7000,
+          "train_loss": 1.6196161595871672e-05,
+          "test_acc": 1.0
+        },
+        {
+          "step": 7500,
+          "train_loss": 1.3423365999187808e-05,
+          "test_acc": 1.0
+        },
+        {
+          "step": 8000,
+          "train_loss": 1.1047904990846291e-05,
+          "test_acc": 1.0
+        },
+        {
+          "step": 8500,
+          "train_loss": 1.0675380508473609e-05,
+          "test_acc": 1.0
+        },
+        {
+          "step": 9000,
+          "train_loss": 8.842555871524382e-06,
+          "test_acc": 1.0
+        },
+        {
+          "step": 9500,
+          "train_loss": 8.391800292884e-06,
+          "test_acc": 1.0
+        },
+        {
+          "step": 10000,
+          "train_loss": 6.994827799644554e-06,
+          "test_acc": 1.0
+        }
+      ]
+    }
+  ],
+  "part_a_key_swap": {
+    "note": "Analysis of the EXP-006 20k-step single-lookup checkpoint (pointer chains, pool 16, train depths 0,1, answer-only); run before the preregistration was written, not a preregistered prediction",
+    "command": "uv run python scripts/probe_learnability.py --tasks pointer --preset micro-small --train-depths 0,1 --ood-depths 2 --pool-size 16 --answer-only --eval-checkpoint <ckpt> --output <out.json>",
+    "cells": {
+      "eval_id|pointer_chain|d0": {
+        "n": 499,
+        "acc": 0.33867735470941884,
+        "mean_nll": 1.1284888989939719,
+        "prompt_blind_acc": 0.03406813627254509,
+        "prompt_blind_nll": 2.9452697153723584
+      },
+      "eval_id|pointer_chain|d1": {
+        "n": 500,
+        "acc": 0.36,
+        "mean_nll": 1.1155281538963318,
+        "prompt_blind_acc": 0.042,
+        "prompt_blind_nll": 2.945592902530366
+      },
+      "eval_ood|pointer_chain|d2": {
+        "n": 500,
+        "acc": 0.308,
+        "mean_nll": 1.1370385394692422,
+        "prompt_blind_acc": 0.058,
+        "prompt_blind_nll": 2.943598925659561
+      }
+    },
+    "key_swap": {
+      "d0": {
+        "n_prompts": 200,
+        "acc": 0.33666666666666667,
+        "mean_p_correct": 0.33094667005042233,
+        "mean_candidate_mass": 0.9929804942011833,
+        "frac_prediction_changes_with_key": 0.03,
+        "frac_all_keys_right": 0.0
+      },
+      "d1": {
+        "n_prompts": 200,
+        "acc": 0.34,
+        "mean_p_correct": 0.33145579653481644,
+        "mean_candidate_mass": 0.9953745836019516,
+        "frac_prediction_changes_with_key": 0.05,
+        "frac_all_keys_right": 0.0
+      },
+      "d2": {
+        "n_prompts": 200,
+        "acc": 0.335,
+        "mean_p_correct": 0.33158686560889084,
+        "mean_candidate_mass": 0.9945105884472529,
+        "frac_prediction_changes_with_key": 0.055,
+        "frac_all_keys_right": 0.0
+      }
+    }
+  }
+}
