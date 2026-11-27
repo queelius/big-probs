@@ -30,6 +30,27 @@ OUT_ROOT="${OUT_ROOT:-runs/h100_stage1}"
 SEED="${SEED:-42}"
 MAX_SEQ_LEN="${MAX_SEQ_LEN:-1024}"
 
+# Tokenizer (BL-11, decided 2026-11-27): SmolLM2's 49,152-token BPE, pinned to a Hub commit.
+# With the 8 protocol tokens the vocabulary is 49,160, so the presets build 160.5M / 409.0M /
+# 1,112.1M parameters. Every job gets the same tokenizer: RL arms load supervised checkpoints,
+# and train.py refuses a checkpoint whose tokenizer fingerprint differs.
+# TOKENIZER=pilot restores the 512-ID PilotTokenizer (no revision). Any other Hub tokenizer
+# needs TOKENIZER_REVISION set to a commit of that repository.
+DEFAULT_TOKENIZER="HuggingFaceTB/SmolLM2-135M"
+DEFAULT_TOKENIZER_REVISION="93efa2f097d58c2a74874c7e644dbc9b0cee75a2"
+TOKENIZER="${TOKENIZER:-${DEFAULT_TOKENIZER}}"
+if [[ "${TOKENIZER}" == "pilot" ]]; then
+  TOKENIZER_ARGS=(--tokenizer pilot)
+else
+  if [[ "${TOKENIZER}" == "${DEFAULT_TOKENIZER}" ]]; then
+    TOKENIZER_REVISION="${TOKENIZER_REVISION:-${DEFAULT_TOKENIZER_REVISION}}"
+  elif [[ -z "${TOKENIZER_REVISION:-}" ]]; then
+    echo "error: TOKENIZER=${TOKENIZER} needs TOKENIZER_REVISION (a commit of that repository)" >&2
+    exit 2
+  fi
+  TOKENIZER_ARGS=(--tokenizer "${TOKENIZER}" --tokenizer-revision "${TOKENIZER_REVISION}")
+fi
+
 # Training budgets (override for scaling to full 2B tokens across multi-node/grad-accum)
 BATCH_SIZE="${BATCH_SIZE:-32}"
 SUP_STEPS="${SUP_STEPS:-15000}"
@@ -62,6 +83,7 @@ echo "==================================================================="
 echo " Phase 1 Stage 1 H100 Pilot Launcher"
 echo " GPUs: ${NPROC_PER_NODE} | Output: ${OUT_ROOT} | Seed: ${SEED}"
 echo " Sup steps: ${SUP_STEPS} | RL steps: ${RL_STEPS} | Seq len: ${MAX_SEQ_LEN}"
+echo " Tokenizer: ${TOKENIZER_ARGS[*]}"
 echo "==================================================================="
 
 # -----------------------------------------------------------------------------
@@ -84,6 +106,7 @@ echo "[1/8] Training B1: 160M Standard NTP Baseline..."
   --n-eval-samples "${N_EVAL_SAMPLES}" \
   --log-every "${LOG_EVERY}" \
   --seed "${SEED}" \
+  "${TOKENIZER_ARGS[@]}" \
   --output-dir "${OUT_ROOT}/b1_160m_ntp"
 
 # -----------------------------------------------------------------------------
@@ -106,6 +129,7 @@ echo "[2/8] Training B2a: 410M (~2.5x) Standard NTP Ceiling..."
   --n-eval-samples "${N_EVAL_SAMPLES}" \
   --log-every "${LOG_EVERY}" \
   --seed "${SEED}" \
+  "${TOKENIZER_ARGS[@]}" \
   --output-dir "${OUT_ROOT}/b2a_410m_ntp"
 
 # -----------------------------------------------------------------------------
@@ -128,6 +152,7 @@ echo "[3/8] Training B2b: 1.0B (~6x) Standard NTP Ceiling..."
   --n-eval-samples "${N_EVAL_SAMPLES}" \
   --log-every "${LOG_EVERY}" \
   --seed "${SEED}" \
+  "${TOKENIZER_ARGS[@]}" \
   --output-dir "${OUT_ROOT}/b2b_1b_ntp"
 
 # -----------------------------------------------------------------------------
@@ -151,6 +176,7 @@ echo "[4/8] Training B3: 160M Pause-Token Control (n_pause_tokens=4)..."
   --n-eval-samples "${N_EVAL_SAMPLES}" \
   --log-every "${LOG_EVERY}" \
   --seed "${SEED}" \
+  "${TOKENIZER_ARGS[@]}" \
   --output-dir "${OUT_ROOT}/b3_160m_pause"
 
 # -----------------------------------------------------------------------------
@@ -174,6 +200,7 @@ echo "[5/8] Training B4: 160M Continuous Latent BPTT (n_latent_steps=4)..."
   --n-eval-samples "${N_EVAL_SAMPLES}" \
   --log-every "${LOG_EVERY}" \
   --seed "${SEED}" \
+  "${TOKENIZER_ARGS[@]}" \
   --output-dir "${OUT_ROOT}/b4_160m_continuous_latent"
 
 # -----------------------------------------------------------------------------
@@ -209,6 +236,7 @@ echo "[6/8] Training RL-R2: 160M Teacher-Free T2_self + R2_log (Dr. GRPO + DAPO)
   --n-eval-samples "${N_EVAL_SAMPLES}" \
   --log-every "${LOG_EVERY}" \
   --seed "${SEED}" \
+  "${TOKENIZER_ARGS[@]}" \
   --output-dir "${OUT_ROOT}/rl_160m_t2self_r2log"
 
 # -----------------------------------------------------------------------------
@@ -243,6 +271,7 @@ echo "[7/8] Training RL-R3: 160M Teacher-Free T2_self + R3_brier (Dr. GRPO + DAP
   --n-eval-samples "${N_EVAL_SAMPLES}" \
   --log-every "${LOG_EVERY}" \
   --seed "${SEED}" \
+  "${TOKENIZER_ARGS[@]}" \
   --output-dir "${OUT_ROOT}/rl_160m_t2self_r3brier"
 
 # -----------------------------------------------------------------------------
@@ -278,6 +307,7 @@ echo "[8/8] Training I2-Hybrid: 160M B4 -> HRPO Hybrid RL + R3_brier..."
   --n-eval-samples "${N_EVAL_SAMPLES}" \
   --log-every "${LOG_EVERY}" \
   --seed "${SEED}" \
+  "${TOKENIZER_ARGS[@]}" \
   --output-dir "${OUT_ROOT}/i2_160m_hybrid_r3brier"
 
 echo "==================================================================="

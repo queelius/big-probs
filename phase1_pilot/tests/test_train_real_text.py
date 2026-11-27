@@ -211,6 +211,42 @@ def test_build_tokenizer_routes_pilot_and_hf_specs(monkeypatch, hf_tokenizer) ->
     assert requested == ["some-org/some-tokenizer"]
 
 
+def test_build_tokenizer_pins_a_revision_only_when_given(monkeypatch, hf_tokenizer) -> None:
+    calls: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        HFTokenizerAdapter,
+        "from_pretrained",
+        classmethod(lambda cls, name, **kw: calls.append((name, kw)) or hf_tokenizer),
+    )
+    build_tokenizer("org/tok", revision="abc123")
+    build_tokenizer("org/tok")
+    assert calls == [("org/tok", {"revision": "abc123"}), ("org/tok", {})]
+    with pytest.raises(ValueError, match="revision"):
+        build_tokenizer("pilot", revision="abc123")
+
+
+def test_checkpoint_records_the_tokenizer_revision(tmp_path, corpus_path, hf_tokenizer) -> None:
+    pinned = run_training(_args(tmp_path / "pinned", corpus_path, "--tokenizer-revision", "abc123"), hf_tokenizer)
+    unpinned = run_training(_args(tmp_path / "unpinned", corpus_path), hf_tokenizer)
+
+    def revision(res):
+        return torch.load(res["checkpoint_path"], map_location="cpu", weights_only=True)["data_protocol"]["tokenizer_revision"]
+
+    assert revision(pinned) == "abc123"
+    assert revision(unpinned) is None
+
+
+def test_main_builds_the_tokenizer_at_the_requested_revision(monkeypatch, tmp_path, hf_tokenizer) -> None:
+    import phase1_pilot.data.tokenizer as tokenizer_mod
+    import phase1_pilot.train as train_mod
+
+    seen: list[tuple[str, str | None]] = []
+    monkeypatch.setattr(tokenizer_mod, "build_tokenizer", lambda spec, revision=None: seen.append((spec, revision)) or hf_tokenizer)
+    monkeypatch.setattr(train_mod, "run_training", lambda args, tok: {"tok": tok})
+    out = main(_argv(tmp_path / "m", None, "--tokenizer", "org/tok", "--tokenizer-revision", "abc123"))
+    assert seen == [("org/tok", "abc123")] and out["tok"] is hf_tokenizer
+
+
 def test_tokenizer_fingerprint_identifies_vocabulary_and_behaviour(hf_tokenizer, make_fake_hf) -> None:
     assert PilotTokenizer().fingerprint() == PilotTokenizer().fingerprint()
     assert hf_tokenizer.fingerprint() == HFTokenizerAdapter(make_fake_hf()).fingerprint()
@@ -245,7 +281,7 @@ def test_published_arm_config_uses_the_checkpoint_model_config(tmp_path, corpus_
         models_repo_id="org/models", datasets_repo_id="org/data", tag="t",
         arm_configs=[payload], report_text=None, metrics_data=None,
     )
-    assert 'build_tokenizer(meta.get("data_protocol", {}).get("tokenizer", "pilot"))' in card
+    assert 'build_tokenizer(protocol.get("tokenizer", "pilot"), revision=protocol.get("tokenizer_revision"))' in card
     assert "PilotTokenizer()" not in card
 
 

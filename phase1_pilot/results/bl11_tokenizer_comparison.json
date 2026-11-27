@@ -1,0 +1,406 @@
+{
+  "config": {
+    "output": "results/bl11_tokenizer_comparison.json",
+    "n_docs": 300,
+    "max_chars": 20000,
+    "candidates": [
+      "HuggingFaceTB/SmolLM2-135M",
+      "bigcode/starcoder2-3b",
+      "EleutherAI/pythia-160m",
+      "openai-community/gpt2"
+    ]
+  },
+  "sources": {
+    "openwebmath": {
+      "dataset": "open-web-math/open-web-math",
+      "config": null,
+      "revision": "fde8ef8de2300f5e778f56261843dab89f230815",
+      "n_docs": 300
+    },
+    "codeparrot": {
+      "dataset": "codeparrot/codeparrot-clean",
+      "config": null,
+      "revision": "35a59fb025bc0a102f7d96eac09d145b896d487b",
+      "n_docs": 300
+    },
+    "fineweb_edu": {
+      "dataset": "HuggingFaceFW/fineweb-edu",
+      "config": "sample-10BT",
+      "revision": "87f09149ef4734204d70ed1d046ddc9ca3f2b8f9",
+      "n_docs": 300
+    }
+  },
+  "pilot_targets": {
+    "aleatoric_cloze": {
+      "single_token_target_frac": 1,
+      "mean_sample_tokens": 43.3
+    },
+    "dag_planning": {
+      "single_token_target_frac": 1,
+      "mean_sample_tokens": 89
+    },
+    "modular_varbind": {
+      "single_token_target_frac": 1,
+      "mean_sample_tokens": 66.5
+    },
+    "python_trace": {
+      "single_token_target_frac": 1,
+      "mean_sample_tokens": 81.8
+    }
+  },
+  "tokenizers": {
+    "HuggingFaceTB/SmolLM2-135M": {
+      "revision": "93efa2f097d58c2a74874c7e644dbc9b0cee75a2",
+      "adapter_vocab_size": 49160,
+      "params": {
+        "160m": 160463616,
+        "410m": 409011200,
+        "1b": 1112131328
+      },
+      "ratios_vs_160m": {
+        "410m": 2.549,
+        "1b": 6.931
+      },
+      "bytes_per_token": {
+        "openwebmath": 3.334,
+        "codeparrot": 3.501,
+        "fineweb_edu": 4.544
+      },
+      "targets": {
+        "aleatoric_cloze": {
+          "single_token_target_frac": 0,
+          "mean_sample_tokens": 40.8
+        },
+        "dag_planning": {
+          "single_token_target_frac": 0,
+          "mean_sample_tokens": 157.8
+        },
+        "modular_varbind": {
+          "single_token_target_frac": 0.493,
+          "mean_sample_tokens": 83.8
+        },
+        "python_trace": {
+          "single_token_target_frac": 0.603,
+          "mean_sample_tokens": 96.2
+        }
+      },
+      "probes": {
+        "123456789": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "x = 4096": [
+          "x",
+          "\u0120=",
+          "\u0120",
+          "4",
+          "0",
+          "9",
+          "6"
+        ],
+        "        return x": [
+          "\u0120\u0120\u0120\u0120\u0120\u0120\u0120",
+          "\u0120return",
+          "\u0120x"
+        ],
+        "v3 = v7 ; v7 = 12": [
+          "v",
+          "3",
+          "\u0120=",
+          "\u0120v",
+          "7",
+          "\u0120;",
+          "\u0120v",
+          "7",
+          "\u0120=",
+          "\u0120",
+          "1",
+          "2"
+        ],
+        "3.14159": [
+          "3",
+          ".",
+          "1",
+          "4",
+          "1",
+          "5",
+          "9"
+        ],
+        "  \n\n    def f():": [
+          "\u0120\u0120",
+          "\u010a\u010a\u0120\u0120\u0120",
+          "\u0120def",
+          "\u0120f",
+          "():"
+        ]
+      }
+    },
+    "bigcode/starcoder2-3b": {
+      "revision": "733247c55e3f73af49ce8e9c7949bf14af205928",
+      "adapter_vocab_size": 49160,
+      "params": {
+        "160m": 160463616,
+        "410m": 409011200,
+        "1b": 1112131328
+      },
+      "ratios_vs_160m": {
+        "410m": 2.549,
+        "1b": 6.931
+      },
+      "bytes_per_token": {
+        "openwebmath": 3.268,
+        "codeparrot": 3.635,
+        "fineweb_edu": 3.908
+      },
+      "targets": {
+        "aleatoric_cloze": {
+          "single_token_target_frac": 0,
+          "mean_sample_tokens": 40.3
+        },
+        "dag_planning": {
+          "single_token_target_frac": 0,
+          "mean_sample_tokens": 158.8
+        },
+        "modular_varbind": {
+          "single_token_target_frac": 0.493,
+          "mean_sample_tokens": 78.8
+        },
+        "python_trace": {
+          "single_token_target_frac": 0.603,
+          "mean_sample_tokens": 90.2
+        }
+      },
+      "probes": {
+        "123456789": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "x = 4096": [
+          "x",
+          "\u0120=",
+          "\u0120",
+          "4",
+          "0",
+          "9",
+          "6"
+        ],
+        "        return x": [
+          "\u0120\u0120\u0120\u0120\u0120\u0120\u0120",
+          "\u0120return",
+          "\u0120x"
+        ],
+        "v3 = v7 ; v7 = 12": [
+          "v",
+          "3",
+          "\u0120=",
+          "\u0120v",
+          "7",
+          "\u0120;",
+          "\u0120v",
+          "7",
+          "\u0120=",
+          "\u0120",
+          "1",
+          "2"
+        ],
+        "3.14159": [
+          "3",
+          ".",
+          "1",
+          "4",
+          "1",
+          "5",
+          "9"
+        ],
+        "  \n\n    def f():": [
+          "\u0120\u0120\u010a\u010a\u0120\u0120\u0120",
+          "\u0120def",
+          "\u0120f",
+          "():"
+        ]
+      }
+    },
+    "EleutherAI/pythia-160m": {
+      "revision": "50f5173d932e8e61f858120bcb800b97af589f46",
+      "adapter_vocab_size": 50285,
+      "params": {
+        "160m": 162191616,
+        "410m": 411315200,
+        "1b": 1116163328
+      },
+      "ratios_vs_160m": {
+        "410m": 2.536,
+        "1b": 6.882
+      },
+      "bytes_per_token": {
+        "openwebmath": 3.638,
+        "codeparrot": 3.349,
+        "fineweb_edu": 4.643
+      },
+      "targets": {
+        "aleatoric_cloze": {
+          "single_token_target_frac": 0,
+          "mean_sample_tokens": 33.9
+        },
+        "dag_planning": {
+          "single_token_target_frac": 0,
+          "mean_sample_tokens": 132
+        },
+        "modular_varbind": {
+          "single_token_target_frac": 1,
+          "mean_sample_tokens": 73.5
+        },
+        "python_trace": {
+          "single_token_target_frac": 1,
+          "mean_sample_tokens": 89.6
+        }
+      },
+      "probes": {
+        "123456789": [
+          "12345",
+          "6789"
+        ],
+        "x = 4096": [
+          "x",
+          "\u0120=",
+          "\u0120409",
+          "6"
+        ],
+        "        return x": [
+          "        ",
+          "return",
+          "\u0120x"
+        ],
+        "v3 = v7 ; v7 = 12": [
+          "v",
+          "3",
+          "\u0120=",
+          "\u0120v",
+          "7",
+          "\u0120;",
+          "\u0120v",
+          "7",
+          "\u0120=",
+          "\u012012"
+        ],
+        "3.14159": [
+          "3",
+          ".",
+          "14",
+          "159"
+        ],
+        "  \n\n    def f():": [
+          "  ",
+          "\u010a\u010a",
+          "    ",
+          "def",
+          "\u0120f",
+          "():"
+        ]
+      }
+    },
+    "openai-community/gpt2": {
+      "revision": "607a30d783dfa663caf39e06633721c8d4cfcd7e",
+      "adapter_vocab_size": 50265,
+      "params": {
+        "160m": 162160896,
+        "410m": 411274240,
+        "1b": 1116091648
+      },
+      "ratios_vs_160m": {
+        "410m": 2.536,
+        "1b": 6.883
+      },
+      "bytes_per_token": {
+        "openwebmath": 3.442,
+        "codeparrot": 2.276,
+        "fineweb_edu": 4.632
+      },
+      "targets": {
+        "aleatoric_cloze": {
+          "single_token_target_frac": 0,
+          "mean_sample_tokens": 33.6
+        },
+        "dag_planning": {
+          "single_token_target_frac": 0,
+          "mean_sample_tokens": 131
+        },
+        "modular_varbind": {
+          "single_token_target_frac": 1,
+          "mean_sample_tokens": 73.5
+        },
+        "python_trace": {
+          "single_token_target_frac": 1,
+          "mean_sample_tokens": 90.6
+        }
+      },
+      "probes": {
+        "123456789": [
+          "123",
+          "45",
+          "67",
+          "89"
+        ],
+        "x = 4096": [
+          "x",
+          "\u0120=",
+          "\u01204096"
+        ],
+        "        return x": [
+          "\u0120",
+          "\u0120",
+          "\u0120",
+          "\u0120",
+          "\u0120",
+          "\u0120",
+          "\u0120",
+          "\u0120return",
+          "\u0120x"
+        ],
+        "v3 = v7 ; v7 = 12": [
+          "v",
+          "3",
+          "\u0120=",
+          "\u0120v",
+          "7",
+          "\u0120;",
+          "\u0120v",
+          "7",
+          "\u0120=",
+          "\u012012"
+        ],
+        "3.14159": [
+          "3",
+          ".",
+          "14",
+          "159"
+        ],
+        "  \n\n    def f():": [
+          "\u0120",
+          "\u0120",
+          "\u010a\u010a",
+          "\u0120",
+          "\u0120",
+          "\u0120",
+          "\u0120def",
+          "\u0120f",
+          "():"
+        ]
+      }
+    }
+  }
+}
