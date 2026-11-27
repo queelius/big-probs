@@ -12,8 +12,8 @@ The root holds the theory (`00-unified-framework.md` synthesizes Tracks 1–3 in
 
 ```bash
 uv sync                                    # CPU torch; pyproject pins the pytorch-cpu index
-uv run pytest                              # full suite: 155 pass and 21 skip, ~25 s on an idle CPU (addopts sets -q; a second -q hides the summary)
-uv run --with "transformers==5.24.0" --with "tokenizers==0.23.3" pytest   # 178 pass: adds the 20 real-tokenizer variants and the LlamaForCausalLM logit-parity tests (versions from uv.lock; no Hub access needed)
+uv run pytest                              # full suite: 169 pass and 21 skip, ~25 s on an idle CPU, ~45 s under load (addopts sets -q; a second -q hides the summary)
+uv run --with "transformers==5.24.0" --with "tokenizers==0.23.3" pytest   # 192 pass: adds the real-tokenizer variants and the LlamaForCausalLM logit-parity tests (versions from uv.lock; no Hub access needed)
 uv run pytest tests/test_rl.py::test_ssl_rl_trainer_anti_sabotage_and_smoke_micro_small -v   # one test
 uv run pytest tests/test_eval.py -k parity -v                                                # by keyword
 uv run --with pytest-cov pytest --cov=phase1_pilot --cov-report=term-missing                 # coverage (pytest-cov is not a project dependency)
@@ -21,6 +21,8 @@ uv run python scripts/run_micro_pilot.py --output-dir runs/<tag>   # 7-arm CPU m
 uv run python -m phase1_pilot.train --help                         # train one arm
 uv run python scripts/aggregate_seeds.py runs/s1/micro_pilot_metrics.json runs/s2/micro_pilot_metrics.json   # per-arm mean ± std and paired diffs across seeds
 uv run python scripts/probe_learnability.py --tasks pointer --train-depths 0,1 --ood-depths 2 --output runs/p.json   # one-model check against the prompt-blind floor (EXP-006)
+uv run python scripts/probe_learnability.py --tasks pointer --train-depths 0,1 --ood-depths 2 --eval-checkpoint runs/p.json.d/checkpoint.pt --output runs/p_eval.json   # re-score a saved probe without training (repeat its data and model flags, e.g. --answer-only); pointer runs add a key-swap probe (EXP-007 Part A)
+uv run python scripts/trainer_check_mqar.py --output runs/mqar.json   # Zoology MQAR trainer check, ~20 min solo (EXP-007); --supervised-queries 1 labels one query per row
 uv run python scripts/log_experiment.py --render-only              # print the Pareto table from the ledger
 uv run python scripts/log_experiment.py --metrics <json> --exp-id EXP-xxx --title "..." --dry-run
 ```
@@ -97,6 +99,7 @@ Things to know when reading RL runs:
 - FLOPs come from `estimate_inference_flops_per_token(config, seq_len, extra_steps)`, where `extra_steps` is the inserted positions amortized per predicted target token.
 - **Check the prompt-blind floor before reading any Regime 1 comparison** (`DE-007`). `eval/reference.py::prompt_blind_reference` scores each task's answer marginal from the training split, a predictor that never reads the prompt; `run_micro_pilot.py` writes it to `prompt_blind_reference` in the metrics JSON and to report section 6. Every `EXP-001` arm scored worse than it, so `EXP-001`'s Regime 1 numbers carry no reasoning signal. Every Regime 1 target is one token, so `exact_accuracy` and `mean_nll` are first-token metrics, and `exact_accuracy` pools ID and OOD depths (read `accuracy_by_depth`).
 - The supervised loss (`train.py::_compute_supervised_loss`) is next-token cross-entropy over the whole sequence: prompt, target, and `<eos>`. `collate_batch` also emits a `target_mask` that the loss never reads. On Regime 1 the answer is about 1.4% of the labels, so a falling `val_loss` says little about answers. `probe_learnability.py --answer-only` masks the prompt labels.
+- **Accuracy at `1/3` on a three-candidate task does not tell you what the model learned.** `probe_learnability.py`'s `key_swap_probe` holds the bindings fixed and changes only the queried key. The `EXP-006` single-lookup model put 99% of its mass on the listed literals, and its greedy answer changed with the key in only 3–5.5% of prompts (`EXP-007`). On MQAR with 10k training rows, a `micro-small` model learned recall with four labelled answers per row; a separately trained one with one labelled answer per row fit its training batches and stayed at 0.20 held-out (likely memorization; train-set accuracy was not measured). That run does not separate answers per step from distinct answers in the set (`BL-12` step 2).
 - `probe_learnability.py` pointer chains draw names from `v0`..`v15` by default: from `v16` on, a name is two `PilotTokenizer` tokens whose first is itself a variable. `modular_varbind` uses the same naming but only `v0`..`v15` at the default depths.
 - The verdict logic lives in `compute_pilot_verdict`. Four thresholds are keyword defaults (ΔNLL_swap > 0.15, ≥ 3 pp over `B3`, ECE within +0.05 of `B1`, drift ≤ 0.15) and the `≤ 1.0× B2` FLOPs cap is hardcoded. Changing any of them changes the verdict logic, which `PROCEDURE.md` Stage 2 requires to be frozen before compute.
 

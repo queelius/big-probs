@@ -12,6 +12,7 @@
 | :--- | :--- | :--- | :--- | :--- | ---: | :---: | :---: |
 | **`EXP-001`** | `2026-11-23` | Phase 1 CPU Micro-Scale 7-Arm Proof-of-Life | `RQ-01`, `H1`, `H1a`, `H1b`, `H1c` | `0.98M` vs `2.85M` (80+20 steps) | `0.026` CPU-hrs (`93.1s`) | `completed` | `FALSIFIED` *(micro-scale)* |
 | **`EXP-006`** | `2026-11-26` | Regime 1 Learnability Scoping (reinterprets `EXP-001`) | `RQ-01`, `H1`, `H1b` | `0.98M` (one `2.85M`), 13 probes × 3k–20k steps | `7.29` CPU-hrs (summed; runs overlapped) | `completed` | `NEGATIVE` *(not preregistered)* |
+| **`EXP-007`** | `2026-11-27` | Trainer Check on Zoology MQAR (`BL-12` step 1) | `RQ-01`, `H1` | `0.92M`/`0.86M`, 3 arms × 10k steps | `3.95` CPU-hrs (summed; runs overlapped) | `completed` | `RULE A` *(stack learns MQAR)* |
 | **`EXP-002`** | `planned` | Phase 1 Stage 1 H100 Core Pilot | `RQ-01`, `H1`, `H1a`, `H1b`, `H1c` | `160M` vs `410M`/`1.0B` (2B tok) | `~35–40` H100-hrs | `planned` | `PENDING` |
 | **`EXP-003`** | `planned` | Phase 2 Factorized Matrix & H1 Transfer Audit | `RQ-01`, `H1`, `H1a`, `H1c` | `Qwen2.5-0.5B/1.5B` vs `3B/7B` | `~250–400` H100-hrs | `planned` | `PENDING` |
 | **`EXP-004`** | `planned` | Phase 3 Cross-Domain Tier 0B–2 Stack & H2 Test | `RQ-02`, `RQ-03`, `H2` | PDE / Contract PoV + PAJAMA + PP | `~500–1000` H100-hrs | `planned` | `PENDING` |
@@ -97,7 +98,9 @@ Takeaways 2 and 4 above, and the Regime 1 accuracy, Hard-BPB, `pass@k`, and `ΔN
 - `EXP-002` gets a competence gate (see its plan below).
 - The next decision is a testbed choice (`BL-12`): find a task and budget where `B1` clears the floor, or move the first real comparison to `L2`.
 
-**Not tested:** candidate-mass and key-swap probes, accuracy curves over training, larger batches, other learning rates or schedules, curricula, more than 20k steps, tied embeddings, and multiple seeds (every probe used seed 42).
+**Mechanism identified (`2026-11-27`, `EXP-007` Part A).** The candidate-mass and key-swap probe on the 20k-step single-lookup checkpoint shows that the model puts `99.3`–`99.5%` of its mass on the three listed literals, but its greedy answer changes with the queried key in only `3`–`5.5%` of prompts. It copies a listed literal without matching the key. Finding 3 above is left as written.
+
+**Not tested** (as of `EXP-006`; the candidate-mass and key-swap probes have since run, see above): candidate-mass and key-swap probes, accuracy curves over training, larger batches, other learning rates or schedules, curricula, more than 20k steps, tied embeddings, and multiple seeds (every probe used seed 42).
 
 ### `EXP-007`: Trainer Check on Zoology MQAR (`BL-12` step 1; preregistered `2026-11-26`)
 **Preregistration** (written and committed before the MQAR runs; not edited after them).
@@ -116,6 +119,24 @@ Takeaways 2 and 4 above, and the Regime 1 accuracy, Hard-BPB, `pass@k`, and `ΔN
 - **Abort:** NaN or Inf train loss (checked every step by the runner).
 - **Budget:** 3 runs in parallel on 4 threads each, about 25 min wall clock (0.11 s per step measured), under 1.5 CPU-hours.
 - **Part A, analysis of an existing checkpoint, run before this preregistration was written:** the candidate-mass and key-swap probe (`key_swap_probe` in `probe_learnability.py`) on the `EXP-006` 20k-step single-lookup checkpoint. It is reported with the results but was not a preregistered prediction.
+
+**Results** (`2026-11-27`; per-arm curves, configs, commands, and the Part A report: [`phase1_pilot/results/exp007_trainer_check_summary.json`](../phase1_pilot/results/exp007_trainer_check_summary.json)).
+
+| Arm | Labels per row | Params | Final test acc | First eval ≥ 0.99 | Final train-batch loss | Copy floor `1/K` | Reading |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | :--- |
+| `M1` `mqar_basic` | 4 | `0.92M` | `1.000` | step 3,500 | `1.4e-5` | `0.25` | learns |
+| `M2` `mqar_1q` | 1 | `0.92M` | `0.202` | never | `2.3e-4` | `0.25` | plateaus (≤ `0.30`) |
+| `M3` `mqar_smallvocab` | 3 | `0.86M` | `1.000` | step 1,000 | `7.0e-6` | `0.33` | learns |
+
+- **Decision: rule A.** `M1` reaches `1.000` (first ≥ 0.99 at step 3,500; `0.258`, about the copy floor, at step 500 and `0.914` at step 1,000). Our model and trainer, with default settings, learn MQAR, so a general defect in either is unlikely to explain the `EXP-006` plateau. The fallback run was not triggered.
+- **`M2` fits its training rows and does not generalize.** Its train-batch loss falls from `3.88` to `2.3e-4` (a summed NLL below `ln 2` over the batch's 32 labels, so all 32 were predicted correctly), while held-out accuracy stays between `0.12` and `0.20` at every evaluation, below even the `0.25` that copying any context value gives. This reading is memorization of the 10,000 training rows (32 epochs) in place of the recall solution `M1` finds on the same inputs. Accuracy on the whole training set, and on the unlabelled queries of training rows, was not measured; those would separate row-specific fitting from a partial or position-based rule. By the secondary rule, label density is the first suspect for the pointer plateau. The run does not separate the two ways one label per row differs from four: four times fewer answers per step, and four times fewer distinct supervised answers in the training set (10k vs. 40k).
+- **`M3` learns faster than `M1`** (`0.995` at step 1,000, first `1.000` at step 4,500). With every query labelled, the combined small setting (16 keys, 19 values, `K=3`, and the higher filler-collision rate that comes with it) is learnable.
+- **Part A: the `EXP-006` model copies a listed literal without reading the query.** On 200 prompts per depth, `99.3`–`99.5%` of next-token probability sits on the three listed literals and mean `p(correct)` is `0.331`. When the bindings are held fixed and only the queried key changes, the greedy answer changes in `3.0%` (d=0), `5.0%` (d=1), and `5.5%` (d=2) of prompts, and no prompt gets all three keys right. (These are greedy answers; the probe does not show whether the distribution over the three literals shifts with the key.) Re-scoring the checkpoint reproduces the `EXP-006` cells exactly (accuracy `0.339`/`0.360`/`0.308`, NLL `1.128`/`1.116`/`1.137`). This identifies the `EXP-006` finding 3 mechanism. `M1`'s accuracy is also at its copy floor at step 500 (`0.258`; its candidate mass was not measured) and leaves it by step 1,000; the pointer model is still at it after 20,000 steps (its accuracy was measured only at the final checkpoint).
+- **The `M2` failure does not look like the pointer plateau.** For the pointer model, `EXP-006` finding 3 reports a final train-batch loss of `0.53` (one batch) against a val loss of `0.57` (answer plus `<eos>` in both; 50k rows over 12.8 epochs). That is weak evidence against substantial overfitting, not a measurement of train-set accuracy. The pointer model also assigns its mass to the listed literals, while `M2` scores below the copy floor on held-out rows. What the two share is one supervised answer per row.
+- **Budget overrun.** The arms took about 80 min wall clock each, against the preregistered estimate of 25 min, and `3.95` arm-hours of elapsed time summed over the three concurrent arms (the "CPU-hrs" in the index, by the `EXP-006` convention), against "under 1.5". The `0.11` s/step estimate was measured on a solo run; the host's load average was about 20 on 12 hardware threads during these runs. No abort rule covered the budget. Results are unaffected; the estimate method was wrong.
+- **Single seed (42) for every arm**, as preregistered.
+
+**Next (`BL-12` step 2, not yet preregistered).** The preregistered secondary rule says "sweep batch size first". `M2` adds a second suspect that batch size alone does not test, the number of distinct supervised answers. Draft design, revised after a Codex review of this write-up: (i) on MQAR with one labelled query per row, a 2×2 of batch {32, 128} × train rows {10k, 40k} on a common holdout, with matched-update and matched-exposure comparisons and the schedule stated, plus train-set accuracy on labelled and unlabelled queries; (ii) on pointer chains at `d=0` (pool 16, answer-only, seed 42), identical inputs that query all three chain heads, with one vs. three answer labels and the same `<eos>` treatment, a rerun one-query `d=0` control (the `EXP-006` checkpoint trained on depths 0 and 1), batch 128, and a fresh holdout split by binding set. Step 2 needs its own preregistration before it runs.
 
 ---
 
