@@ -1,0 +1,1574 @@
+{
+  "exp_id": "EXP-006",
+  "scope": "CPU scoping probes: does one supervised NTP micro model leave the prompt-blind floor on Regime 1?",
+  "compute_note": "compute_hours in the ledger sums each probe's own train_seconds; probes ran 2-4 at a time, so wall-clock was shorter",
+  "hardware": "AMD Ryzen 5 7430U (6 cores / 12 threads), CPU-only; 4 torch threads per probe with 2-4 probes in parallel, except the 20k-step probe (8 threads, solo)",
+  "floor_notes": {
+    "dag_planning": "picking one of the 3 listed candidates scores 1/3",
+    "pointer_chain": "copying one of the 3 literals in the prompt scores 1/3"
+  },
+  "floor_test": "structural_floor is 1/3 for tasks in CANDIDATE_TASKS, else the cell's prompt-blind accuracy; p_above_floor is a one-sided exact binomial test. Bonferroni over all cells: alpha = 0.05 / n_cells.",
+  "n_cells": 89,
+  "cells_above_floor_bonferroni": [
+    "b1_d1:eval_id|python_trace|d1"
+  ],
+  "probes": [
+    {
+      "name": "b1_d24",
+      "status": "completed",
+      "tasks": "stratified",
+      "preset": "micro-small",
+      "train_depths": [
+        2,
+        4
+      ],
+      "ood_depths": [
+        6,
+        8
+      ],
+      "answer_only": false,
+      "steps": 3000,
+      "batch_size": 32,
+      "n_train": 50000,
+      "pointer_pool_size": null,
+      "equivalent_command": "uv run python scripts/probe_learnability.py --tasks stratified --preset micro-small --train-depths 2,4 --ood-depths 6,8 --steps 3000 --output <out.json>",
+      "answer_label_share": 0.014,
+      "final_train_loss": 0.8188899755477905,
+      "train_seconds": 1581.1598766571842,
+      "final_val_loss": 0.9762747168540955,
+      "val_curve": [
+        [
+          300,
+          1.0302
+        ],
+        [
+          600,
+          1.0059
+        ],
+        [
+          900,
+          1.016
+        ],
+        [
+          1200,
+          1.0011
+        ],
+        [
+          1500,
+          0.9997
+        ],
+        [
+          1800,
+          0.9976
+        ],
+        [
+          2100,
+          0.9962
+        ],
+        [
+          2400,
+          0.9932
+        ],
+        [
+          2700,
+          0.9876
+        ],
+        [
+          3000,
+          0.9763
+        ]
+      ],
+      "cells": {
+        "eval_aleatoric|aleatoric_cloze|d0": {
+          "n": 600,
+          "acc": 0.051666666666666666,
+          "prompt_blind_acc": 0.06,
+          "structural_floor": 0.06,
+          "p_above_floor": 0.8272874486814773
+        },
+        "eval_id|dag_planning|d2": {
+          "n": 100,
+          "acc": 0.06,
+          "prompt_blind_acc": 0.02,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.9999999999935629
+        },
+        "eval_id|dag_planning|d4": {
+          "n": 100,
+          "acc": 0.03,
+          "prompt_blind_acc": 0.01,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 1.0000000000000024
+        },
+        "eval_id|modular_varbind|d2": {
+          "n": 100,
+          "acc": 0.03,
+          "prompt_blind_acc": 0.06,
+          "structural_floor": 0.06,
+          "p_above_floor": 0.943387223332138
+        },
+        "eval_id|modular_varbind|d4": {
+          "n": 100,
+          "acc": 0.06,
+          "prompt_blind_acc": 0.07,
+          "structural_floor": 0.07,
+          "p_above_floor": 0.7085751454270558
+        },
+        "eval_id|python_trace|d2": {
+          "n": 100,
+          "acc": 0.11,
+          "prompt_blind_acc": 0.1,
+          "structural_floor": 0.1,
+          "p_above_floor": 0.41684448773350935
+        },
+        "eval_id|python_trace|d4": {
+          "n": 100,
+          "acc": 0.07,
+          "prompt_blind_acc": 0.04,
+          "structural_floor": 0.04,
+          "p_above_floor": 0.10639231790455772
+        },
+        "eval_ood|dag_planning|d6": {
+          "n": 100,
+          "acc": 0.01,
+          "prompt_blind_acc": 0.0,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 1.0000000000000056
+        },
+        "eval_ood|dag_planning|d8": {
+          "n": 100,
+          "acc": 0.01,
+          "prompt_blind_acc": 0.04,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 1.0000000000000056
+        },
+        "eval_ood|modular_varbind|d6": {
+          "n": 100,
+          "acc": 0.05,
+          "prompt_blind_acc": 0.06,
+          "structural_floor": 0.06,
+          "p_above_floor": 0.7232247809849202
+        },
+        "eval_ood|modular_varbind|d8": {
+          "n": 100,
+          "acc": 0.0,
+          "prompt_blind_acc": 0.07,
+          "structural_floor": 0.07,
+          "p_above_floor": 0.9999999999999944
+        },
+        "eval_ood|python_trace|d6": {
+          "n": 100,
+          "acc": 0.06,
+          "prompt_blind_acc": 0.06,
+          "structural_floor": 0.06,
+          "p_above_floor": 0.5593072758258064
+        },
+        "eval_ood|python_trace|d8": {
+          "n": 100,
+          "acc": 0.08,
+          "prompt_blind_acc": 0.12,
+          "structural_floor": 0.12,
+          "p_above_floor": 0.923863901565546
+        }
+      }
+    },
+    {
+      "name": "b2_d24",
+      "status": "completed",
+      "tasks": "stratified",
+      "preset": "micro-large",
+      "train_depths": [
+        2,
+        4
+      ],
+      "ood_depths": [
+        6,
+        8
+      ],
+      "answer_only": false,
+      "steps": 3000,
+      "batch_size": 32,
+      "n_train": 50000,
+      "pointer_pool_size": null,
+      "equivalent_command": "uv run python scripts/probe_learnability.py --tasks stratified --preset micro-large --train-depths 2,4 --ood-depths 6,8 --steps 3000 --output <out.json>",
+      "answer_label_share": 0.014,
+      "final_train_loss": 0.8406901955604553,
+      "train_seconds": 4462.567183806095,
+      "final_val_loss": 0.9940580129623413,
+      "val_curve": [
+        [
+          300,
+          1.0249
+        ],
+        [
+          600,
+          1.0065
+        ],
+        [
+          900,
+          1.0052
+        ],
+        [
+          1200,
+          1.0018
+        ],
+        [
+          1500,
+          1.004
+        ],
+        [
+          1800,
+          0.9986
+        ],
+        [
+          2100,
+          0.997
+        ],
+        [
+          2400,
+          0.9955
+        ],
+        [
+          2700,
+          0.9945
+        ],
+        [
+          3000,
+          0.9941
+        ]
+      ],
+      "cells": {
+        "eval_aleatoric|aleatoric_cloze|d0": {
+          "n": 600,
+          "acc": 0.056666666666666664,
+          "prompt_blind_acc": 0.06,
+          "structural_floor": 0.06,
+          "p_above_floor": 0.6586960840746516
+        },
+        "eval_id|dag_planning|d2": {
+          "n": 100,
+          "acc": 0.0,
+          "prompt_blind_acc": 0.02,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 1.0000000000000056
+        },
+        "eval_id|dag_planning|d4": {
+          "n": 100,
+          "acc": 0.04,
+          "prompt_blind_acc": 0.01,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.9999999999999527
+        },
+        "eval_id|modular_varbind|d2": {
+          "n": 100,
+          "acc": 0.08,
+          "prompt_blind_acc": 0.06,
+          "structural_floor": 0.06,
+          "p_above_floor": 0.25165056021561577
+        },
+        "eval_id|modular_varbind|d4": {
+          "n": 100,
+          "acc": 0.07,
+          "prompt_blind_acc": 0.07,
+          "structural_floor": 0.07,
+          "p_above_floor": 0.5557197578390106
+        },
+        "eval_id|python_trace|d2": {
+          "n": 100,
+          "acc": 0.13,
+          "prompt_blind_acc": 0.1,
+          "structural_floor": 0.1,
+          "p_above_floor": 0.19817888735956787
+        },
+        "eval_id|python_trace|d4": {
+          "n": 100,
+          "acc": 0.05,
+          "prompt_blind_acc": 0.04,
+          "structural_floor": 0.04,
+          "p_above_floor": 0.37113593355469676
+        },
+        "eval_ood|dag_planning|d6": {
+          "n": 100,
+          "acc": 0.03,
+          "prompt_blind_acc": 0.0,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 1.0000000000000024
+        },
+        "eval_ood|dag_planning|d8": {
+          "n": 100,
+          "acc": 0.04,
+          "prompt_blind_acc": 0.04,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.9999999999999527
+        },
+        "eval_ood|modular_varbind|d6": {
+          "n": 100,
+          "acc": 0.05,
+          "prompt_blind_acc": 0.06,
+          "structural_floor": 0.06,
+          "p_above_floor": 0.7232247809849202
+        },
+        "eval_ood|modular_varbind|d8": {
+          "n": 100,
+          "acc": 0.0,
+          "prompt_blind_acc": 0.07,
+          "structural_floor": 0.07,
+          "p_above_floor": 0.9999999999999944
+        },
+        "eval_ood|python_trace|d6": {
+          "n": 100,
+          "acc": 0.08,
+          "prompt_blind_acc": 0.06,
+          "structural_floor": 0.06,
+          "p_above_floor": 0.25165056021561577
+        },
+        "eval_ood|python_trace|d8": {
+          "n": 100,
+          "acc": 0.14,
+          "prompt_blind_acc": 0.12,
+          "structural_floor": 0.12,
+          "p_above_floor": 0.3113533349517458
+        }
+      }
+    },
+    {
+      "name": "b1_d123",
+      "status": "completed",
+      "tasks": "stratified",
+      "preset": "micro-small",
+      "train_depths": [
+        1,
+        2,
+        3
+      ],
+      "ood_depths": [
+        4
+      ],
+      "answer_only": false,
+      "steps": 3000,
+      "batch_size": 32,
+      "n_train": 50000,
+      "pointer_pool_size": null,
+      "equivalent_command": "uv run python scripts/probe_learnability.py --tasks stratified --preset micro-small --train-depths 1,2,3 --ood-depths 4 --steps 3000 --output <out.json>",
+      "answer_label_share": 0.0167,
+      "final_train_loss": 0.7382282614707947,
+      "train_seconds": 2340.7289168587886,
+      "final_val_loss": 0.9379992067813874,
+      "val_curve": [
+        [
+          300,
+          1.0392
+        ],
+        [
+          600,
+          1.0323
+        ],
+        [
+          900,
+          1.0214
+        ],
+        [
+          1200,
+          1.0163
+        ],
+        [
+          1500,
+          1.0157
+        ],
+        [
+          1800,
+          0.9953
+        ],
+        [
+          2100,
+          0.9716
+        ],
+        [
+          2400,
+          0.9576
+        ],
+        [
+          2700,
+          0.9448
+        ],
+        [
+          3000,
+          0.938
+        ]
+      ],
+      "cells": {
+        "eval_aleatoric|aleatoric_cloze|d0": {
+          "n": 600,
+          "acc": 0.05,
+          "prompt_blind_acc": 0.06,
+          "structural_floor": 0.06,
+          "p_above_floor": 0.8697628069649475
+        },
+        "eval_id|dag_planning|d1": {
+          "n": 67,
+          "acc": 0.19402985074626866,
+          "prompt_blind_acc": 0.029850746268656716,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.9960977986614296
+        },
+        "eval_id|dag_planning|d2": {
+          "n": 67,
+          "acc": 0.2835820895522388,
+          "prompt_blind_acc": 0.014925373134328358,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.839758678548619
+        },
+        "eval_id|dag_planning|d3": {
+          "n": 66,
+          "acc": 0.3333333333333333,
+          "prompt_blind_acc": 0.07575757575757576,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.5461710164610687
+        },
+        "eval_id|modular_varbind|d1": {
+          "n": 67,
+          "acc": 0.1044776119402985,
+          "prompt_blind_acc": 0.04477611940298507,
+          "structural_floor": 0.04477611940298507,
+          "p_above_floor": 0.030095505152485935
+        },
+        "eval_id|modular_varbind|d2": {
+          "n": 67,
+          "acc": 0.05970149253731343,
+          "prompt_blind_acc": 0.05970149253731343,
+          "structural_floor": 0.05970149253731343,
+          "p_above_floor": 0.572558954434848
+        },
+        "eval_id|modular_varbind|d3": {
+          "n": 66,
+          "acc": 0.030303030303030304,
+          "prompt_blind_acc": 0.015151515151515152,
+          "structural_floor": 0.015151515151515152,
+          "p_above_floor": 0.26423397184861735
+        },
+        "eval_id|python_trace|d1": {
+          "n": 67,
+          "acc": 0.08955223880597014,
+          "prompt_blind_acc": 0.05970149253731343,
+          "structural_floor": 0.05970149253731343,
+          "p_above_floor": 0.20993529842256242
+        },
+        "eval_id|python_trace|d2": {
+          "n": 67,
+          "acc": 0.07462686567164178,
+          "prompt_blind_acc": 0.11940298507462686,
+          "structural_floor": 0.11940298507462686,
+          "p_above_floor": 0.9143387201828739
+        },
+        "eval_id|python_trace|d3": {
+          "n": 66,
+          "acc": 0.07575757575757576,
+          "prompt_blind_acc": 0.09090909090909091,
+          "structural_floor": 0.09090909090909091,
+          "p_above_floor": 0.7276976703126262
+        },
+        "eval_ood|dag_planning|d4": {
+          "n": 200,
+          "acc": 0.21,
+          "prompt_blind_acc": 0.045,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.9999561565313244
+        },
+        "eval_ood|modular_varbind|d4": {
+          "n": 200,
+          "acc": 0.06,
+          "prompt_blind_acc": 0.045,
+          "structural_floor": 0.045,
+          "p_above_floor": 0.19247133277508693
+        },
+        "eval_ood|python_trace|d4": {
+          "n": 200,
+          "acc": 0.06,
+          "prompt_blind_acc": 0.065,
+          "structural_floor": 0.065,
+          "p_above_floor": 0.6536968091407476
+        }
+      }
+    },
+    {
+      "name": "b1_d1",
+      "status": "completed",
+      "tasks": "stratified",
+      "preset": "micro-small",
+      "train_depths": [
+        1
+      ],
+      "ood_depths": [
+        2
+      ],
+      "answer_only": false,
+      "steps": 3000,
+      "batch_size": 32,
+      "n_train": 50000,
+      "pointer_pool_size": null,
+      "equivalent_command": "uv run python scripts/probe_learnability.py --tasks stratified --preset micro-small --train-depths 1 --ood-depths 2 --steps 3000 --output <out.json>",
+      "answer_label_share": 0.0208,
+      "final_train_loss": 0.6485805511474609,
+      "train_seconds": 2295.7031871001236,
+      "final_val_loss": 0.8385749876499176,
+      "val_curve": [
+        [
+          300,
+          1.0301
+        ],
+        [
+          600,
+          1.0179
+        ],
+        [
+          900,
+          1.0007
+        ],
+        [
+          1200,
+          0.9046
+        ],
+        [
+          1500,
+          0.8897
+        ],
+        [
+          1800,
+          0.876
+        ],
+        [
+          2100,
+          0.8643
+        ],
+        [
+          2400,
+          0.852
+        ],
+        [
+          2700,
+          0.8432
+        ],
+        [
+          3000,
+          0.8386
+        ]
+      ],
+      "cells": {
+        "eval_aleatoric|aleatoric_cloze|d0": {
+          "n": 600,
+          "acc": 0.05333333333333334,
+          "prompt_blind_acc": 0.06,
+          "structural_floor": 0.06,
+          "p_above_floor": 0.7774364791106234
+        },
+        "eval_id|dag_planning|d1": {
+          "n": 200,
+          "acc": 0.35,
+          "prompt_blind_acc": 0.025,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.3329843045998366
+        },
+        "eval_id|modular_varbind|d1": {
+          "n": 200,
+          "acc": 0.04,
+          "prompt_blind_acc": 0.065,
+          "structural_floor": 0.065,
+          "p_above_floor": 0.9514568635342925
+        },
+        "eval_id|python_trace|d1": {
+          "n": 200,
+          "acc": 0.17,
+          "prompt_blind_acc": 0.06,
+          "structural_floor": 0.06,
+          "p_above_floor": 4.194549404233317e-08
+        },
+        "eval_ood|dag_planning|d2": {
+          "n": 200,
+          "acc": 0.33,
+          "prompt_blind_acc": 0.045,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.5662432225995798
+        },
+        "eval_ood|modular_varbind|d2": {
+          "n": 200,
+          "acc": 0.09,
+          "prompt_blind_acc": 0.055,
+          "structural_floor": 0.055,
+          "p_above_floor": 0.02827456723408492
+        },
+        "eval_ood|python_trace|d2": {
+          "n": 200,
+          "acc": 0.105,
+          "prompt_blind_acc": 0.05,
+          "structural_floor": 0.05,
+          "p_above_floor": 0.0011599082507479114
+        }
+      }
+    },
+    {
+      "name": "b1_d123_answer_only",
+      "status": "completed",
+      "tasks": "stratified",
+      "preset": "micro-small",
+      "train_depths": [
+        1,
+        2,
+        3
+      ],
+      "ood_depths": [
+        4
+      ],
+      "answer_only": true,
+      "steps": 3000,
+      "batch_size": 32,
+      "n_train": 50000,
+      "pointer_pool_size": null,
+      "equivalent_command": "uv run python scripts/probe_learnability.py --tasks stratified --preset micro-small --train-depths 1,2,3 --ood-depths 4 --steps 3000 --answer-only --output <out.json>",
+      "answer_label_share": 0.0167,
+      "final_train_loss": 1.0377119779586792,
+      "train_seconds": 2252.04563716799,
+      "final_val_loss": 1.4434285759925842,
+      "val_curve": [
+        [
+          300,
+          1.5916
+        ],
+        [
+          600,
+          1.5735
+        ],
+        [
+          900,
+          1.5784
+        ],
+        [
+          1200,
+          1.5539
+        ],
+        [
+          1500,
+          1.5458
+        ],
+        [
+          1800,
+          1.5277
+        ],
+        [
+          2100,
+          1.5071
+        ],
+        [
+          2400,
+          1.4828
+        ],
+        [
+          2700,
+          1.4581
+        ],
+        [
+          3000,
+          1.4434
+        ]
+      ],
+      "cells": {
+        "eval_aleatoric|aleatoric_cloze|d0": {
+          "n": 600,
+          "acc": 0.04833333333333333,
+          "prompt_blind_acc": 0.06,
+          "structural_floor": 0.06,
+          "p_above_floor": 0.9047250108059826
+        },
+        "eval_id|dag_planning|d1": {
+          "n": 67,
+          "acc": 0.3582089552238806,
+          "prompt_blind_acc": 0.029850746268656716,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.376325299276031
+        },
+        "eval_id|dag_planning|d2": {
+          "n": 67,
+          "acc": 0.3582089552238806,
+          "prompt_blind_acc": 0.014925373134328358,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.376325299276031
+        },
+        "eval_id|dag_planning|d3": {
+          "n": 66,
+          "acc": 0.24242424242424243,
+          "prompt_blind_acc": 0.07575757575757576,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.9583444544247322
+        },
+        "eval_id|modular_varbind|d1": {
+          "n": 67,
+          "acc": 0.05970149253731343,
+          "prompt_blind_acc": 0.04477611940298507,
+          "structural_floor": 0.04477611940298507,
+          "p_above_floor": 0.3527289306256489
+        },
+        "eval_id|modular_varbind|d2": {
+          "n": 67,
+          "acc": 0.05970149253731343,
+          "prompt_blind_acc": 0.05970149253731343,
+          "structural_floor": 0.05970149253731343,
+          "p_above_floor": 0.572558954434848
+        },
+        "eval_id|modular_varbind|d3": {
+          "n": 66,
+          "acc": 0.030303030303030304,
+          "prompt_blind_acc": 0.015151515151515152,
+          "structural_floor": 0.015151515151515152,
+          "p_above_floor": 0.26423397184861735
+        },
+        "eval_id|python_trace|d1": {
+          "n": 67,
+          "acc": 0.04477611940298507,
+          "prompt_blind_acc": 0.05970149253731343,
+          "structural_floor": 0.05970149253731343,
+          "p_above_floor": 0.7708687663165668
+        },
+        "eval_id|python_trace|d2": {
+          "n": 67,
+          "acc": 0.05970149253731343,
+          "prompt_blind_acc": 0.11940298507462686,
+          "structural_floor": 0.11940298507462686,
+          "p_above_floor": 0.966042908847559
+        },
+        "eval_id|python_trace|d3": {
+          "n": 66,
+          "acc": 0.015151515151515152,
+          "prompt_blind_acc": 0.09090909090909091,
+          "structural_floor": 0.09090909090909091,
+          "p_above_floor": 0.9981461150468564
+        },
+        "eval_ood|dag_planning|d4": {
+          "n": 200,
+          "acc": 0.21,
+          "prompt_blind_acc": 0.045,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.9999561565313244
+        },
+        "eval_ood|modular_varbind|d4": {
+          "n": 200,
+          "acc": 0.045,
+          "prompt_blind_acc": 0.045,
+          "structural_floor": 0.045,
+          "p_above_floor": 0.5473899300725453
+        },
+        "eval_ood|python_trace|d4": {
+          "n": 200,
+          "acc": 0.05,
+          "prompt_blind_acc": 0.065,
+          "structural_floor": 0.065,
+          "p_above_floor": 0.8429972425238667
+        }
+      }
+    },
+    {
+      "name": "ptr_d1234",
+      "status": "completed",
+      "tasks": "pointer",
+      "preset": "micro-small",
+      "train_depths": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "ood_depths": [
+        6
+      ],
+      "answer_only": false,
+      "steps": 3000,
+      "batch_size": 32,
+      "n_train": 50000,
+      "pointer_pool_size": 32,
+      "equivalent_command": "uv run python scripts/probe_learnability.py --tasks pointer --preset micro-small --train-depths 1,2,3,4 --ood-depths 6 --steps 3000 --pool-size 32 --output <out.json>",
+      "answer_label_share": 0.0163,
+      "final_train_loss": null,
+      "train_seconds": 2126.144190997351,
+      "final_val_loss": 1.2968754172325134,
+      "val_curve": [
+        [
+          300,
+          1.4008
+        ],
+        [
+          600,
+          1.3729
+        ],
+        [
+          900,
+          1.3626
+        ],
+        [
+          1200,
+          1.3523
+        ],
+        [
+          1500,
+          1.3395
+        ],
+        [
+          1800,
+          1.3204
+        ],
+        [
+          2100,
+          1.31
+        ],
+        [
+          2400,
+          1.3025
+        ],
+        [
+          2700,
+          1.2981
+        ],
+        [
+          3000,
+          1.2969
+        ]
+      ],
+      "cells": {
+        "eval_id|pointer_chain|d1": {
+          "n": 300,
+          "acc": 0.35333333333333333,
+          "prompt_blind_acc": 0.03,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.24912724320367424
+        },
+        "eval_id|pointer_chain|d2": {
+          "n": 300,
+          "acc": 0.2733333333333333,
+          "prompt_blind_acc": 0.07333333333333333,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.989222661676637
+        },
+        "eval_id|pointer_chain|d3": {
+          "n": 300,
+          "acc": 0.32,
+          "prompt_blind_acc": 0.05,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.7075603574111368
+        },
+        "eval_id|pointer_chain|d4": {
+          "n": 300,
+          "acc": 0.31333333333333335,
+          "prompt_blind_acc": 0.04666666666666667,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.7862627896532053
+        },
+        "eval_ood|pointer_chain|d6": {
+          "n": 300,
+          "acc": 0.2733333333333333,
+          "prompt_blind_acc": 0.04666666666666667,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.989222661676637
+        }
+      }
+    },
+    {
+      "name": "ptr_d1234_6000",
+      "status": "completed",
+      "tasks": "pointer",
+      "preset": "micro-small",
+      "train_depths": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "ood_depths": [
+        6
+      ],
+      "answer_only": false,
+      "steps": 6000,
+      "batch_size": 32,
+      "n_train": 50000,
+      "pointer_pool_size": 32,
+      "equivalent_command": "uv run python scripts/probe_learnability.py --tasks pointer --preset micro-small --train-depths 1,2,3,4 --ood-depths 6 --steps 6000 --pool-size 32 --output <out.json>",
+      "answer_label_share": 0.0163,
+      "final_train_loss": null,
+      "train_seconds": 4582.240586322267,
+      "final_val_loss": 1.2642220258712769,
+      "val_curve": [
+        [
+          600,
+          1.3746
+        ],
+        [
+          1200,
+          1.3457
+        ],
+        [
+          1800,
+          1.3278
+        ],
+        [
+          2400,
+          1.3096
+        ],
+        [
+          3000,
+          1.2951
+        ],
+        [
+          3600,
+          1.2833
+        ],
+        [
+          4200,
+          1.2794
+        ],
+        [
+          4800,
+          1.2712
+        ],
+        [
+          5400,
+          1.2674
+        ],
+        [
+          6000,
+          1.2642
+        ]
+      ],
+      "cells": {
+        "eval_id|pointer_chain|d1": {
+          "n": 300,
+          "acc": 0.30333333333333334,
+          "prompt_blind_acc": 0.03,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.8782253911469103
+        },
+        "eval_id|pointer_chain|d2": {
+          "n": 300,
+          "acc": 0.29,
+          "prompt_blind_acc": 0.07333333333333333,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.9521957896215547
+        },
+        "eval_id|pointer_chain|d3": {
+          "n": 300,
+          "acc": 0.32666666666666666,
+          "prompt_blind_acc": 0.05,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.6178806540465569
+        },
+        "eval_id|pointer_chain|d4": {
+          "n": 300,
+          "acc": 0.3233333333333333,
+          "prompt_blind_acc": 0.04666666666666667,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.6638471351681003
+        },
+        "eval_ood|pointer_chain|d6": {
+          "n": 300,
+          "acc": 0.29333333333333333,
+          "prompt_blind_acc": 0.04666666666666667,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.938346912306947
+        }
+      }
+    },
+    {
+      "name": "ptr_d1234_answer_only",
+      "status": "completed",
+      "tasks": "pointer",
+      "preset": "micro-small",
+      "train_depths": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "ood_depths": [
+        6
+      ],
+      "answer_only": true,
+      "steps": 3000,
+      "batch_size": 32,
+      "n_train": 50000,
+      "pointer_pool_size": 32,
+      "equivalent_command": "uv run python scripts/probe_learnability.py --tasks pointer --preset micro-small --train-depths 1,2,3,4 --ood-depths 6 --steps 3000 --pool-size 32 --answer-only --output <out.json>",
+      "answer_label_share": 0.0163,
+      "final_train_loss": null,
+      "train_seconds": 2472.214465905912,
+      "final_val_loss": 1.0118457227945328,
+      "val_curve": [
+        [
+          300,
+          1.1598
+        ],
+        [
+          600,
+          1.0807
+        ],
+        [
+          900,
+          1.0879
+        ],
+        [
+          1200,
+          1.1068
+        ],
+        [
+          1500,
+          1.0599
+        ],
+        [
+          1800,
+          1.0508
+        ],
+        [
+          2100,
+          1.0505
+        ],
+        [
+          2400,
+          1.0276
+        ],
+        [
+          2700,
+          1.0187
+        ],
+        [
+          3000,
+          1.0118
+        ]
+      ],
+      "cells": {
+        "eval_id|pointer_chain|d1": {
+          "n": 300,
+          "acc": 0.36666666666666664,
+          "prompt_blind_acc": 0.03,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.12275247832306807
+        },
+        "eval_id|pointer_chain|d2": {
+          "n": 300,
+          "acc": 0.2866666666666667,
+          "prompt_blind_acc": 0.07333333333333333,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.9634560917371704
+        },
+        "eval_id|pointer_chain|d3": {
+          "n": 300,
+          "acc": 0.3,
+          "prompt_blind_acc": 0.05,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.9016249307401547
+        },
+        "eval_id|pointer_chain|d4": {
+          "n": 300,
+          "acc": 0.31333333333333335,
+          "prompt_blind_acc": 0.04666666666666667,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.7862627896532053
+        },
+        "eval_ood|pointer_chain|d6": {
+          "n": 300,
+          "acc": 0.31333333333333335,
+          "prompt_blind_acc": 0.04666666666666667,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.7862627896532053
+        }
+      }
+    },
+    {
+      "name": "ptr_d01",
+      "status": "completed",
+      "tasks": "pointer",
+      "preset": "micro-small",
+      "train_depths": [
+        0,
+        1
+      ],
+      "ood_depths": [
+        2
+      ],
+      "answer_only": false,
+      "steps": 3000,
+      "batch_size": 32,
+      "n_train": 50000,
+      "pointer_pool_size": 32,
+      "equivalent_command": "uv run python scripts/probe_learnability.py --tasks pointer --preset micro-small --train-depths 0,1 --ood-depths 2 --steps 3000 --pool-size 32 --output <out.json>",
+      "answer_label_share": 0.0317,
+      "final_train_loss": 1.0679832696914673,
+      "train_seconds": 481.33486732980236,
+      "final_val_loss": 1.0924918949604034,
+      "val_curve": [
+        [
+          300,
+          1.2385
+        ],
+        [
+          600,
+          1.204
+        ],
+        [
+          900,
+          1.1927
+        ],
+        [
+          1200,
+          1.1702
+        ],
+        [
+          1500,
+          1.1552
+        ],
+        [
+          1800,
+          1.1421
+        ],
+        [
+          2100,
+          1.1239
+        ],
+        [
+          2400,
+          1.106
+        ],
+        [
+          2700,
+          1.0992
+        ],
+        [
+          3000,
+          1.0925
+        ]
+      ],
+      "cells": {
+        "eval_id|pointer_chain|d0": {
+          "n": 500,
+          "acc": 0.388,
+          "mean_nll": 1.5172888273000718,
+          "prompt_blind_acc": 0.04,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.005869044915086278
+        },
+        "eval_id|pointer_chain|d1": {
+          "n": 500,
+          "acc": 0.308,
+          "mean_nll": 1.9427120639085769,
+          "prompt_blind_acc": 0.05,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.8947652079205393
+        },
+        "eval_ood|pointer_chain|d2": {
+          "n": 500,
+          "acc": 0.196,
+          "mean_nll": 2.291118432641029,
+          "prompt_blind_acc": 0.058,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.9999999999967293
+        }
+      }
+    },
+    {
+      "name": "ptr_d01_answer_only",
+      "status": "completed",
+      "tasks": "pointer",
+      "preset": "micro-small",
+      "train_depths": [
+        0,
+        1
+      ],
+      "ood_depths": [
+        2
+      ],
+      "answer_only": true,
+      "steps": 3000,
+      "batch_size": 32,
+      "n_train": 50000,
+      "pointer_pool_size": 32,
+      "equivalent_command": "uv run python scripts/probe_learnability.py --tasks pointer --preset micro-small --train-depths 0,1 --ood-depths 2 --steps 3000 --pool-size 32 --answer-only --output <out.json>",
+      "answer_label_share": 0.0317,
+      "final_train_loss": 0.6891500949859619,
+      "train_seconds": 470.615021341946,
+      "final_val_loss": 0.7963130176067352,
+      "val_curve": [
+        [
+          300,
+          1.146
+        ],
+        [
+          600,
+          1.0731
+        ],
+        [
+          900,
+          0.9984
+        ],
+        [
+          1200,
+          0.9251
+        ],
+        [
+          1500,
+          0.8951
+        ],
+        [
+          1800,
+          0.8748
+        ],
+        [
+          2100,
+          0.8421
+        ],
+        [
+          2400,
+          0.8099
+        ],
+        [
+          2700,
+          0.8007
+        ],
+        [
+          3000,
+          0.7963
+        ]
+      ],
+      "cells": {
+        "eval_id|pointer_chain|d0": {
+          "n": 500,
+          "acc": 0.35,
+          "mean_nll": 1.5162253770232201,
+          "prompt_blind_acc": 0.04,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.22799924095036764
+        },
+        "eval_id|pointer_chain|d1": {
+          "n": 500,
+          "acc": 0.314,
+          "mean_nll": 1.6562815908193589,
+          "prompt_blind_acc": 0.05,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.8325141742581975
+        },
+        "eval_ood|pointer_chain|d2": {
+          "n": 500,
+          "acc": 0.316,
+          "mean_nll": 1.7654301464557647,
+          "prompt_blind_acc": 0.058,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.8073913042303191
+        }
+      }
+    },
+    {
+      "name": "ptr16_d01",
+      "status": "completed",
+      "tasks": "pointer",
+      "preset": "micro-small",
+      "train_depths": [
+        0,
+        1
+      ],
+      "ood_depths": [
+        2
+      ],
+      "answer_only": false,
+      "steps": 3000,
+      "batch_size": 32,
+      "n_train": 50000,
+      "pointer_pool_size": 16,
+      "equivalent_command": "uv run python scripts/probe_learnability.py --tasks pointer --preset micro-small --train-depths 0,1 --ood-depths 2 --steps 3000 --pool-size 16 --output <out.json>",
+      "answer_label_share": 0.0357,
+      "final_train_loss": 1.174175500869751,
+      "train_seconds": 575.933208047878,
+      "final_val_loss": 1.1687382459640503,
+      "val_curve": [
+        [
+          300,
+          1.2104
+        ],
+        [
+          600,
+          1.1969
+        ],
+        [
+          900,
+          1.1996
+        ],
+        [
+          1200,
+          1.1971
+        ],
+        [
+          1500,
+          1.1939
+        ],
+        [
+          1800,
+          1.1851
+        ],
+        [
+          2100,
+          1.1784
+        ],
+        [
+          2400,
+          1.1739
+        ],
+        [
+          2700,
+          1.1694
+        ],
+        [
+          3000,
+          1.1687
+        ]
+      ],
+      "cells": {
+        "eval_id|pointer_chain|d0": {
+          "n": 499,
+          "acc": 0.2625250501002004,
+          "mean_nll": 2.4795675293238224,
+          "prompt_blind_acc": 0.03406813627254509,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.9997381505013586
+        },
+        "eval_id|pointer_chain|d1": {
+          "n": 500,
+          "acc": 0.236,
+          "mean_nll": 2.5012927384376527,
+          "prompt_blind_acc": 0.042,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.9999992094442387
+        },
+        "eval_ood|pointer_chain|d2": {
+          "n": 500,
+          "acc": 0.222,
+          "mean_nll": 2.546647079706192,
+          "prompt_blind_acc": 0.058,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.9999999825039206
+        }
+      }
+    },
+    {
+      "name": "ptr16_d01_answer_only",
+      "status": "completed",
+      "tasks": "pointer",
+      "preset": "micro-small",
+      "train_depths": [
+        0,
+        1
+      ],
+      "ood_depths": [
+        2
+      ],
+      "answer_only": true,
+      "steps": 3000,
+      "batch_size": 32,
+      "n_train": 50000,
+      "pointer_pool_size": 16,
+      "equivalent_command": "uv run python scripts/probe_learnability.py --tasks pointer --preset micro-small --train-depths 0,1 --ood-depths 2 --steps 3000 --pool-size 16 --answer-only --output <out.json>",
+      "answer_label_share": 0.0357,
+      "final_train_loss": 0.5600215196609497,
+      "train_seconds": 569.3072971492074,
+      "final_val_loss": 0.5604164600372314,
+      "val_curve": [
+        [
+          300,
+          0.8349
+        ],
+        [
+          600,
+          0.8268
+        ],
+        [
+          900,
+          0.7169
+        ],
+        [
+          1200,
+          0.7056
+        ],
+        [
+          1500,
+          0.6467
+        ],
+        [
+          1800,
+          0.613
+        ],
+        [
+          2100,
+          0.6076
+        ],
+        [
+          2400,
+          0.5999
+        ],
+        [
+          2700,
+          0.5678
+        ],
+        [
+          3000,
+          0.5604
+        ]
+      ],
+      "cells": {
+        "eval_id|pointer_chain|d0": {
+          "n": 499,
+          "acc": 0.3246492985971944,
+          "mean_nll": 1.1388817219313734,
+          "prompt_blind_acc": 0.03406813627254509,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.6753563518095932
+        },
+        "eval_id|pointer_chain|d1": {
+          "n": 500,
+          "acc": 0.338,
+          "mean_nll": 1.1422830638885497,
+          "prompt_blind_acc": 0.042,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.4289652995212707
+        },
+        "eval_ood|pointer_chain|d2": {
+          "n": 500,
+          "acc": 0.312,
+          "mean_nll": 1.159362398147583,
+          "prompt_blind_acc": 0.058,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.8554460963185284
+        }
+      }
+    },
+    {
+      "name": "ptr16_d01_answer_only_20k",
+      "status": "completed",
+      "tasks": "pointer",
+      "preset": "micro-small",
+      "train_depths": [
+        0,
+        1
+      ],
+      "ood_depths": [
+        2
+      ],
+      "answer_only": true,
+      "steps": 20000,
+      "batch_size": 32,
+      "n_train": 50000,
+      "pointer_pool_size": 16,
+      "equivalent_command": "uv run python scripts/probe_learnability.py --tasks pointer --preset micro-small --train-depths 0,1 --ood-depths 2 --steps 20000 --pool-size 16 --threads 8 --answer-only --output <out.json>",
+      "answer_label_share": 0.0357,
+      "final_train_loss": 0.5325343012809753,
+      "train_seconds": 2046.5709457970224,
+      "final_val_loss": 0.5679222047328949,
+      "val_curve": [
+        [
+          2000,
+          0.6558
+        ],
+        [
+          4000,
+          0.6447
+        ],
+        [
+          6000,
+          0.6359
+        ],
+        [
+          8000,
+          0.6087
+        ],
+        [
+          10000,
+          0.5697
+        ],
+        [
+          12000,
+          0.5778
+        ],
+        [
+          14000,
+          0.5622
+        ],
+        [
+          16000,
+          0.5629
+        ],
+        [
+          18000,
+          0.5633
+        ],
+        [
+          20000,
+          0.5679
+        ]
+      ],
+      "cells": {
+        "eval_id|pointer_chain|d0": {
+          "n": 499,
+          "acc": 0.33867735470941884,
+          "mean_nll": 1.1284888989939719,
+          "prompt_blind_acc": 0.03406813627254509,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.4165319636111703
+        },
+        "eval_id|pointer_chain|d1": {
+          "n": 500,
+          "acc": 0.36,
+          "mean_nll": 1.1155281538963318,
+          "prompt_blind_acc": 0.042,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.11216022302924489
+        },
+        "eval_ood|pointer_chain|d2": {
+          "n": 500,
+          "acc": 0.308,
+          "mean_nll": 1.1370385394692422,
+          "prompt_blind_acc": 0.058,
+          "structural_floor": 0.3333333333333333,
+          "p_above_floor": 0.8947652079205393
+        }
+      }
+    }
+  ],
+  "killed": [
+    {
+      "name": "b1_d24_8000",
+      "equivalent_command": "uv run python scripts/probe_learnability.py --tasks stratified --preset micro-small --train-depths 2,4 --ood-depths 6,8 --steps 8000 --output <out.json>",
+      "reason": "stopped by hand after about 900 steps to free CPU cores; no evaluation was run",
+      "last_logged": {
+        "step": 800,
+        "train_loss": 0.9663718342781067,
+        "lr": 0.0014907938797968376,
+        "val_loss": 1.0079303085803986
+      }
+    }
+  ],
+  "timing_probe": "scratchpad time_probe.py, 30 supervised / 10 RL steps per arm type, solo at 4 threads: micro-small ntp 190 ms/step, micro-large 394, pause 165, continuous_latent 315 (batch 32); RL I1_discrete 505, I2_hybrid 301 ms/step (batch 8, G=4)",
+  "exp001_reference": {
+    "source": "phase1_pilot/scripts/run_micro_pilot.py defaults, --output-dir runs/exp001_rerun_ref",
+    "prompt_blind_reference": {
+      "mean_nll": 3.1495308319462705,
+      "accuracy": 0.078125,
+      "n_samples": 64,
+      "n_target_tokens": 64,
+      "mean_nll_by_task": {
+        "dag_planning": 3.4815513118897394,
+        "python_trace": 2.8175103520028015
+      },
+      "mean_nll_by_depth": {
+        "2": 3.09862829668913,
+        "4": 3.190877172533524,
+        "6": 3.198594464573677,
+        "8": 3.110023393988752
+      }
+    }
+  },
+  "preregistered": false,
+  "verdict": {
+    "status": "NEGATIVE",
+    "rationale": "No supervised NTP micro model left its task's structural floor within the CPU budget (13 probes, 3,000-20,000 steps): the floor is the prompt-blind reference, or 1/3 for dag_planning and pointer chains, whose answer is one of three options listed in the prompt. Under a Bonferroni-corrected one-sided binomial test, only python_trace d=1 trained on d=1 alone is above its floor (17.0% vs 6.0%, n=200). Single lookups with single-token names and answer-only loss plateau at the copy floor for 20k steps (answer NLL about ln 3). The micro testbed cannot test thought arms until a base model is competent; EXP-001's Regime 1 arms are all below the prompt-blind floor, so its Regime 1 comparisons carry no reasoning signal."
+  },
+  "arms": {}
+}

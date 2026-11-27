@@ -20,8 +20,11 @@ from phase1_pilot.eval.diagnostics import (
     perturb_continuous_latents_norm_matched,
     unbiased_pass_at_k,
 )
+from phase1_pilot.eval.reference import PromptBlindReference, prompt_blind_reference
 
 __all__ = [
+    "PromptBlindReference",
+    "prompt_blind_reference",
     "ArmEvalBundle",
     "CalibrationResult",
     "ParetoPoint",

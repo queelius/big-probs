@@ -43,6 +43,7 @@ from phase1_pilot.eval.diagnostics import (
     evaluate_pass_at_k,
     evaluate_thought_faithfulness,
 )
+from phase1_pilot.eval.reference import prompt_blind_reference
 from phase1_pilot.models import build_model
 from phase1_pilot.train import set_seed, train_ssl_rl, train_supervised
 
@@ -305,6 +306,26 @@ def _build_report_markdown(
         mark = "PASS" if passed else "FAIL"
         lines.append(f"- `{k}`: **{mark}**")
 
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _prompt_blind_section(ref_nll: float, ref_acc: float, bundles: dict[str, ArmEvalBundle]) -> str:
+    """Report section comparing each arm's Regime 1 NLL with the prompt-blind reference."""
+    lines = [
+        "",
+        "## 6. Prompt-Blind Reference (Regime 1)",
+        "",
+        f"Each task's answer marginal from the training split scores NLL `{ref_nll:.3f}` and "
+        f"accuracy `{ref_acc * 100:.1f}%` on the same eval set without reading the prompt. "
+        "An arm whose NLL is not below it has not learned to use the prompt, and its Regime 1 "
+        "comparisons carry no reasoning signal.",
+        "",
+        "| Arm | Mean NLL | NLL below prompt-blind |",
+        "| :--- | ---: | ---: |",
+    ]
+    for name, b in bundles.items():
+        lines.append(f"| `{name}` | {b.pareto.mean_nll:.3f} | {ref_nll - b.pareto.mean_nll:+.3f} |")
     lines.append("")
     return "\n".join(lines)
 
@@ -704,6 +725,8 @@ def run_micro_pilot(args: argparse.Namespace) -> dict[str, Any]:
         b4=bundles["B4"],
         candidate_arms=[bundles["RL-R1"], bundles["RL-R3"], bundles["I2-Hybrid"]],
     )
+    # The NLL a predictor gets on the same Regime 1 eval set without reading the prompt.
+    reference = prompt_blind_reference(datasets["train"].tokenized, eval_r1_all)
     elapsed = time.perf_counter() - t0
 
     payload = {
@@ -713,6 +736,7 @@ def run_micro_pilot(args: argparse.Namespace) -> dict[str, Any]:
         "verdict": verdict.to_dict(),
         "arms": {k: v.to_dict() for k, v in bundles.items()},
         "training_telemetry": train_telemetry,
+        "prompt_blind_reference": reference.to_dict(),
     }
     json_path = out_dir / "micro_pilot_metrics.json"
     md_path = out_dir / "micro_pilot_report.md"
@@ -724,7 +748,7 @@ def run_micro_pilot(args: argparse.Namespace) -> dict[str, Any]:
         train_telemetry=train_telemetry,
         args=args,
         elapsed_sec=elapsed,
-    )
+    ) + _prompt_blind_section(reference.mean_nll, reference.accuracy, bundles)
     md_path.write_text(md_report, encoding="utf-8")
 
     print(f"\nMicro-pilot complete in {elapsed:.1f}s.")
