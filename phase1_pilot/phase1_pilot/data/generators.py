@@ -24,32 +24,9 @@ import torch
 from torch.utils.data import Dataset
 
 from phase1_pilot.config import DataConfig
+from phase1_pilot.data.corpus import CorpusSplits
+from phase1_pilot.data.records import Sample, TokenizedSample
 from phase1_pilot.data.tokenizer import PilotTokenizer
-
-
-@dataclass(frozen=True)
-class Sample:
-    """Raw text sample across all 3 regimes."""
-
-    prompt: str
-    target: str
-    full_text: str
-    regime: str
-    task: str
-    depth: int
-    answer_span_start: int
-
-
-@dataclass(frozen=True)
-class TokenizedSample:
-    """Tokenized sample aligned for supervised NTP, latent BPTT, and SSL-as-RL."""
-
-    input_ids: list[int]
-    prompt_len: int
-    target_ids: list[int]
-    regime: str
-    task: str
-    depth: int
 
 
 # ---------------------------------------------------------------------------
@@ -754,8 +731,21 @@ def tokenize_sample(
     )
 
 
-class PilotDataset(Dataset):
-    """PyTorch Dataset holding both raw `Sample` and tokenized `TokenizedSample` records."""
+class TokenizedDataset(Dataset):
+    """PyTorch Dataset over `TokenizedSample` records, whatever produced them."""
+
+    def __init__(self, tokenized: Sequence[TokenizedSample]) -> None:
+        self.tokenized: list[TokenizedSample] = list(tokenized)
+
+    def __len__(self) -> int:
+        return len(self.tokenized)
+
+    def __getitem__(self, idx: int) -> TokenizedSample:
+        return self.tokenized[idx]
+
+
+class PilotDataset(TokenizedDataset):
+    """A `TokenizedDataset` built from raw `Sample`s, which it keeps in `samples`."""
 
     def __init__(
         self,
@@ -766,15 +756,9 @@ class PilotDataset(Dataset):
         self.samples: list[Sample] = list(samples)
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
-        self.tokenized: list[TokenizedSample] = [
+        super().__init__(
             tokenize_sample(s, tokenizer, max_seq_len=max_seq_len) for s in self.samples
-        ]
-
-    def __len__(self) -> int:
-        return len(self.tokenized)
-
-    def __getitem__(self, idx: int) -> TokenizedSample:
-        return self.tokenized[idx]
+        )
 
 
 def collate_batch(
@@ -857,6 +841,11 @@ def collate_batch(
 TRAIN_REGIME_MIX: tuple[float, float, float] = (0.75, 0.15, 0.10)
 
 
+def natural_train_count(n_train_samples: int) -> int:
+    """How many Regime 2 records a `train` split of `n_train_samples` holds."""
+    return _split_counts(n_train_samples, TRAIN_REGIME_MIX)[1]
+
+
 def _split_counts(total: int, ratios: Sequence[float]) -> list[int]:
     """Deterministically partition `total` into integer counts matching `ratios`."""
     raw = [total * r for r in ratios]
@@ -914,7 +903,8 @@ def _build_algorithmic_mix(
 def build_stratified_datasets(
     data_cfg: DataConfig,
     tokenizer: PilotTokenizer,
-) -> dict[str, PilotDataset]:
+    natural: CorpusSplits | None = None,
+) -> dict[str, TokenizedDataset]:
     """Build all 5 stratified PyTorch datasets with guaranteed zero train/eval leakage.
 
     Splits:
@@ -923,6 +913,12 @@ def build_stratified_datasets(
       - `eval_ood`:       Regime 1 at `data_cfg.eval_ood_depths` (strictly disjoint hop depths)
       - `eval_natural`:   Regime 2 structured math-prose/code (strictly zero overlap with `train`)
       - `eval_aleatoric`: Regime 3 irreducible-entropy cloze (strictly disjoint entity namespace)
+
+    Regime 2 is the synthetic `generate_natural_stream` unless `natural` is given.
+    `natural` is a real-text build from `data.corpus.build_corpus_splits`, sized with
+    `natural_train_count(n_train_samples)` train windows and `n_eval_samples` eval
+    windows. Its windows are already tokenized, so `train` and `eval_natural` are then
+    plain `TokenizedDataset`s with no raw `samples`.
     """
     overlap = set(data_cfg.train_depths) & set(data_cfg.eval_ood_depths)
     if overlap:
@@ -944,17 +940,34 @@ def build_stratified_datasets(
         seed=seed + 1000,
         exclude_prompts=seen_alg_prompts,
     )
-    train_nat = generate_natural_stream(n_train_nat, seed=seed + 2000)
+    if natural is not None and (len(natural.train), len(natural.eval)) != (n_train_nat, n_eval):
+        raise ValueError(
+            f"natural corpus build has {len(natural.train)} train and {len(natural.eval)} eval "
+            f"windows; this configuration needs {n_train_nat} and {n_eval}"
+        )
+    train_nat = generate_natural_stream(n_train_nat, seed=seed + 2000) if natural is None else []
     train_nat_sigs = {f"nat|{s.prompt}|{s.target}" for s in train_nat}
     train_alea = generate_aleatoric_cloze(
         n_train_alea,
         seed=seed + 3000,
         namespace="tr",
     )
-
-    train_samples = train_alg + train_nat + train_alea
     rng = random.Random(seed + 4000)
-    rng.shuffle(train_samples)
+
+    max_len = data_cfg.max_seq_len
+    train_ds: TokenizedDataset
+    if natural is None:
+        train_samples = train_alg + train_nat + train_alea
+        rng.shuffle(train_samples)
+        train_ds = PilotDataset(train_samples, tokenizer, max_seq_len=max_len)
+    else:
+        train_records = (
+            [tokenize_sample(s, tokenizer, max_seq_len=max_len) for s in train_alg]
+            + natural.train
+            + [tokenize_sample(s, tokenizer, max_seq_len=max_len) for s in train_alea]
+        )
+        rng.shuffle(train_records)
+        train_ds = TokenizedDataset(train_records)
 
     # Eval splits (strictly disjoint from train).
     eval_id_samples = _build_algorithmic_mix(
@@ -969,11 +982,16 @@ def build_stratified_datasets(
         seed=seed + 20_000,
         exclude_prompts=seen_alg_prompts,
     )
-    eval_natural_samples = generate_natural_stream(
-        n_eval,
-        seed=seed + 30_000,
-        exclude_signatures=train_nat_sigs,
-    )
+    eval_natural_ds: TokenizedDataset
+    if natural is None:
+        eval_natural_samples = generate_natural_stream(
+            n_eval,
+            seed=seed + 30_000,
+            exclude_signatures=train_nat_sigs,
+        )
+        eval_natural_ds = PilotDataset(eval_natural_samples, tokenizer, max_seq_len=max_len)
+    else:
+        eval_natural_ds = TokenizedDataset(natural.eval)
     eval_aleatoric_samples = generate_aleatoric_cloze(
         n_eval,
         seed=seed + 40_000,
@@ -981,9 +999,9 @@ def build_stratified_datasets(
     )
 
     return {
-        "train": PilotDataset(train_samples, tokenizer, max_seq_len=data_cfg.max_seq_len),
-        "eval_id": PilotDataset(eval_id_samples, tokenizer, max_seq_len=data_cfg.max_seq_len),
-        "eval_ood": PilotDataset(eval_ood_samples, tokenizer, max_seq_len=data_cfg.max_seq_len),
-        "eval_natural": PilotDataset(eval_natural_samples, tokenizer, max_seq_len=data_cfg.max_seq_len),
-        "eval_aleatoric": PilotDataset(eval_aleatoric_samples, tokenizer, max_seq_len=data_cfg.max_seq_len),
+        "train": train_ds,
+        "eval_id": PilotDataset(eval_id_samples, tokenizer, max_seq_len=max_len),
+        "eval_ood": PilotDataset(eval_ood_samples, tokenizer, max_seq_len=max_len),
+        "eval_natural": eval_natural_ds,
+        "eval_aleatoric": PilotDataset(eval_aleatoric_samples, tokenizer, max_seq_len=max_len),
     }

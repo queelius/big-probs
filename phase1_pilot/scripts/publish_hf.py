@@ -153,10 +153,16 @@ def _build_arm_config_json(
     if preset.startswith("micro"):
         model_overrides["vocab_size"] = 512
 
-    try:
-        model_cfg_dict = ModelConfig.preset(preset, **model_overrides).to_dict()
-    except ValueError:
-        model_cfg_dict = {"preset": preset, **model_overrides}
+    saved_model_cfg = ckpt.get("model_config") if isinstance(ckpt, dict) else None
+    if isinstance(saved_model_cfg, dict):
+        # `train.py` records the exact model it built. The reconstruction below is only
+        # for checkpoints written before it did (and for `run_micro_pilot.py` arms).
+        model_cfg_dict = dict(saved_model_cfg)
+    else:
+        try:
+            model_cfg_dict = ModelConfig.preset(preset, **model_overrides).to_dict()
+        except ValueError:
+            model_cfg_dict = {"preset": preset, **model_overrides}
 
     arm_display_name = (
         arm_metrics.get("arm_name")
@@ -177,6 +183,8 @@ def _build_arm_config_json(
     }
     if isinstance(ckpt, dict) and "final_train_loss" in ckpt:
         config_payload["final_train_loss"] = ckpt["final_train_loss"]
+    if isinstance(ckpt, dict) and "data_protocol" in ckpt:
+        config_payload["data_protocol"] = ckpt["data_protocol"]
     if rl_cfg is not None:
         config_payload["rl_config"] = rl_cfg
     if isinstance(ckpt, dict) and "final_metrics" in ckpt:
@@ -317,7 +325,7 @@ def _render_model_card(
             "import torch",
             "from huggingface_hub import hf_hub_download",
             "from phase1_pilot.config import ModelConfig",
-            "from phase1_pilot.data import PilotTokenizer",
+            "from phase1_pilot.data import build_tokenizer",
             "from phase1_pilot.models import build_model",
             "",
             f'REPO_ID = "{models_repo_id}"',
@@ -328,11 +336,11 @@ def _render_model_card(
             "",
             'meta = json.loads(open(cfg_file, encoding="utf-8").read())',
             'model_cfg = ModelConfig(**meta["model_config"])',
-            "tokenizer = PilotTokenizer()",
+            'tokenizer = build_tokenizer(meta.get("data_protocol", {}).get("tokenizer", "pilot"))',
             'kwargs = {"pause_token_id": tokenizer.pause_id} if model_cfg.variant == "pause" else {}',
             "model = build_model(model_cfg, **kwargs)",
             "",
-            'ckpt = torch.load(ckpt_file, map_location="cpu", weights_only=False)',
+            'ckpt = torch.load(ckpt_file, map_location="cpu", weights_only=True)',
             'model.load_state_dict(ckpt["model_state_dict"], strict=True)',
             "model.eval()",
             "```",

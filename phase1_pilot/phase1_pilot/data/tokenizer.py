@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
-from typing import Any, Sequence
+from typing import Any, Iterable, Sequence
 
 import torch
 
@@ -60,6 +62,33 @@ _BASE_MULTI_TOKENS: tuple[str, ...] = (
     "if (a+b)%2==0:", "if (b+c)%2==0:", "if (a+c)%2==0:",
     "print(a)", "print(b)", "print(c)",
 )
+
+
+# Text whose encoding separates tokenizers that share a vocabulary but differ in
+# normalization, prefix-space handling, or their treatment of marker strings.
+_FINGERPRINT_PROBE = (
+    "The theorem: for x in range(10), f(x) = x**2 + 1.\n"
+    "    return [a, b]  # Tabs\tand  double  spaces\n"
+    " leading space, UPPER lower, naïve café ∑ π, 3.14159, <pad> <think> </think> <ans>"
+)
+
+
+def _fingerprint(tokenizer: Any, id_token_pairs: Iterable[tuple[int, str]]) -> str:
+    """Digest of a tokenizer's ID-to-token table and of how it encodes a fixed probe text.
+
+    The table alone would miss two tokenizers with one vocabulary and different
+    merge rules or normalization. Hashing behaviour instead of serialized state
+    keeps the value stable across library versions.
+    """
+    payload = json.dumps(
+        [
+            sorted(id_token_pairs),
+            tokenizer.encode(_FINGERPRINT_PROBE),
+            tokenizer.encode_corpus(_FINGERPRINT_PROBE),
+        ],
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 class PilotTokenizer:
@@ -123,6 +152,11 @@ class PilotTokenizer:
             re.escape(t) for t in multi_alts
         ]
         self._pattern = re.compile("|".join(pattern_parts))
+        # Corpus text is encoded without the special tokens, so a marker string in a
+        # document stays ordinary text.
+        self._text_pattern = (
+            re.compile("|".join(re.escape(t) for t in multi_alts)) if multi_alts else None
+        )
 
     @property
     def pad_id(self) -> int:
@@ -167,6 +201,13 @@ class PilotTokenizer:
     def is_special(self, token_id: int) -> bool:
         return 0 <= token_id < len(self._special_tokens)
 
+    def protocol_ids(self) -> dict[str, int]:
+        """Each protocol token and its ID."""
+        return dict(self._special_to_id)
+
+    def fingerprint(self) -> str:
+        return _fingerprint(self, enumerate(self._id_to_str))
+
     def token_to_id(self, token: str) -> int:
         if token in self._special_to_id:
             return self._special_to_id[token]
@@ -197,10 +238,21 @@ class PilotTokenizer:
         ids: list[int] = []
         if add_bos:
             ids.append(self.bos_id)
+        self._encode_into(ids, text, self._pattern)
+        if add_eos:
+            ids.append(self.eos_id)
+        return ids
 
+    def encode_corpus(self, text: str) -> list[int]:
+        """Encode raw corpus text. Marker strings such as `<pad>` stay ordinary bytes."""
+        ids: list[int] = []
+        self._encode_into(ids, text, self._text_pattern)
+        return ids
+
+    def _encode_into(self, ids: list[int], text: str, pattern: re.Pattern[str] | None) -> None:
         pos = 0
         n = len(text)
-        for match in self._pattern.finditer(text):
+        for match in pattern.finditer(text) if pattern is not None else ():
             start, end = match.span()
             if start > pos:
                 for b in text[pos:start].encode("utf-8"):
@@ -215,10 +267,6 @@ class PilotTokenizer:
         if pos < n:
             for b in text[pos:].encode("utf-8"):
                 ids.append(self.BYTE_OFFSET + b)
-
-        if add_eos:
-            ids.append(self.eos_id)
-        return ids
 
     def decode(
         self,
@@ -311,12 +359,27 @@ class HFTokenizerAdapter:
 
     def __init__(self, hf_tokenizer: Any) -> None:
         self._tok = hf_tokenizer
-        # Ensure latent special tokens are registered.
-        needed = [t for t in SPECIAL_TOKENS if t not in self._tok.get_vocab()]
-        if needed:
-            self._tok.add_special_tokens({"additional_special_tokens": needed})
-        if self._tok.pad_token_id is None:
-            self._tok.pad_token = "<pad>"
+        # Register every protocol token. The wrapped tokenizer's own pad/bos/eos are
+        # not used: many tokenizers ship them as one shared token, and a `<bos>` that
+        # equals `<pad>` would be masked out of loss and attention.
+        # All eight are registered, including any the vocabulary already holds as an
+        # ordinary entry, so that each is matched whole wherever it appears.
+        self._tok.add_special_tokens({"additional_special_tokens": list(SPECIAL_TOKENS)})
+        vocab = self._tok.get_vocab()
+        self._ids: dict[str, int] = {t: self._id_of(t) for t in SPECIAL_TOKENS}
+        if len(set(self._ids.values())) != len(SPECIAL_TOKENS):
+            raise ValueError(
+                f"HF tokenizer maps protocol tokens to non-distinct IDs: {self._ids}"
+            )
+        # Embedding rows needed. `len()` is right for dense IDs; the maximum covers
+        # tokenizers whose IDs have gaps.
+        self._vocab_size = max(len(self._tok), max((int(i) for i in vocab.values()), default=-1) + 1)
+        for token, idx in self._ids.items():
+            if self._tok.encode(f"a{token}b", add_special_tokens=False).count(idx) != 1:
+                raise ValueError(
+                    f"HF tokenizer does not encode {token!r} as a single token inside text, "
+                    f"so prompts could lose the marker"
+                )
 
     @classmethod
     def from_pretrained(cls, name_or_path: str, **kwargs: Any) -> HFTokenizerAdapter:
@@ -339,43 +402,59 @@ class HFTokenizerAdapter:
 
     @property
     def pad_id(self) -> int:
-        return int(self._tok.pad_token_id)
+        return self._ids["<pad>"]
 
     @property
     def bos_id(self) -> int:
-        if self._tok.bos_token_id is not None:
-            return int(self._tok.bos_token_id)
-        return self._id_of("<bos>")
+        return self._ids["<bos>"]
 
     @property
     def eos_id(self) -> int:
-        if self._tok.eos_token_id is not None:
-            return int(self._tok.eos_token_id)
-        return self._id_of("<eos>")
+        return self._ids["<eos>"]
 
     @property
     def think_start_id(self) -> int:
-        return self._id_of("<think>")
+        return self._ids["<think>"]
 
     @property
     def think_end_id(self) -> int:
-        return self._id_of("</think>")
+        return self._ids["</think>"]
 
     @property
     def pause_id(self) -> int:
-        return self._id_of("<pause>")
+        return self._ids["<pause>"]
 
     @property
     def sep_id(self) -> int:
-        return self._id_of("<sep>")
+        return self._ids["<sep>"]
 
     @property
     def ans_id(self) -> int:
-        return self._id_of("<ans>")
+        return self._ids["<ans>"]
 
     @property
     def vocab_size(self) -> int:
-        return len(self._tok)
+        return self._vocab_size
+
+    @property
+    def special_ids(self) -> frozenset[int]:
+        """The IDs of the protocol tokens (the counterpart of `PilotTokenizer.special_ids`)."""
+        return frozenset(self._ids.values())
+
+    def protocol_ids(self) -> dict[str, int]:
+        """Each protocol token and its ID."""
+        return dict(self._ids)
+
+    def fingerprint(self) -> str:
+        return _fingerprint(self, ((int(i), t) for t, i in self._tok.get_vocab().items()))
+
+    def encode_corpus(self, text: str) -> list[int]:
+        """Encode raw corpus text, asking the backend to keep marker strings as ordinary text.
+
+        A backend that ignores `split_special_tokens` still returns protocol IDs for
+        such strings; `data.corpus` rejects those documents.
+        """
+        return list(self._tok.encode(text, add_special_tokens=False, split_special_tokens=True))
 
     def encode(
         self,
@@ -421,3 +500,13 @@ class HFTokenizerAdapter:
             "attention_mask": attention_mask,
             "lengths": torch.tensor(lengths, dtype=torch.long),
         }
+
+
+PILOT_TOKENIZER_SPEC = "pilot"
+
+
+def build_tokenizer(spec: str = PILOT_TOKENIZER_SPEC) -> PilotTokenizer | HFTokenizerAdapter:
+    """`"pilot"` gives the built-in `PilotTokenizer`; anything else is a HuggingFace name or path."""
+    if spec == PILOT_TOKENIZER_SPEC:
+        return PilotTokenizer()
+    return HFTokenizerAdapter.from_pretrained(spec)
