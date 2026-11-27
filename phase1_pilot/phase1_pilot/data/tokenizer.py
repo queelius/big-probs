@@ -505,8 +505,16 @@ class HFTokenizerAdapter:
 PILOT_TOKENIZER_SPEC = "pilot"
 
 
-def build_tokenizer(spec: str = PILOT_TOKENIZER_SPEC) -> PilotTokenizer | HFTokenizerAdapter:
-    """`"pilot"` gives the built-in `PilotTokenizer`; anything else is a HuggingFace name or path."""
+def build_tokenizer(
+    spec: str = PILOT_TOKENIZER_SPEC, revision: str | None = None
+) -> PilotTokenizer | HFTokenizerAdapter:
+    """`"pilot"` gives the built-in `PilotTokenizer`; anything else is a HuggingFace name or path.
+
+    `revision` pins a Hub tokenizer to a commit, so a run does not change when the
+    upstream repository does. It has no meaning for the built-in tokenizer.
+    """
     if spec == PILOT_TOKENIZER_SPEC:
+        if revision is not None:
+            raise ValueError(f"tokenizer revision {revision!r} given for the built-in {spec!r} tokenizer")
         return PilotTokenizer()
-    return HFTokenizerAdapter.from_pretrained(spec)
+    return HFTokenizerAdapter.from_pretrained(spec, **({} if revision is None else {"revision": revision}))

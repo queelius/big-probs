@@ -531,6 +531,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="'pilot' (built-in byte+symbol tokenizer) or a HuggingFace tokenizer name or path.",
     )
     p.add_argument(
+        "--tokenizer-revision",
+        default=None,
+        help="Hub commit to load a HuggingFace --tokenizer at; recorded in the checkpoint.",
+    )
+    p.add_argument(
         "--corpus",
         default=None,
         help="JSON Lines file of real-text documents (string fields key, text, source). "
@@ -645,6 +650,7 @@ def data_protocol(
     tokenizer: Any,
     corpus_cfg: CorpusConfig | None,
     max_seq_len: int,
+    tokenizer_revision: str | None = None,
 ) -> dict[str, Any]:
     """What a checkpoint must share with a run that loads it.
 
@@ -655,6 +661,7 @@ def data_protocol(
     """
     return {
         "tokenizer": tokenizer_spec,
+        "tokenizer_revision": tokenizer_revision,
         "tokenizer_fingerprint": tokenizer.fingerprint(),
         "vocab_size": tokenizer.vocab_size,
         "special_token_ids": tokenizer.protocol_ids(),
@@ -733,7 +740,7 @@ def run_training(args: argparse.Namespace, tokenizer: Any) -> dict[str, Any]:
         train_loader, val_loader, corpus_stats = build_dataloaders(args, tokenizer)
         if corpus_stats is not None and _is_main_process():
             print(_describe_corpus(corpus_stats))
-        protocol = data_protocol(args.tokenizer, tokenizer, corpus_cfg, args.max_seq_len)
+        protocol = data_protocol(args.tokenizer, tokenizer, corpus_cfg, args.max_seq_len, args.tokenizer_revision)
 
         set_seed(args.seed)
         model_cfg = resolve_model_config(args, tokenizer)
@@ -842,10 +849,10 @@ def run_training(args: argparse.Namespace, tokenizer: Any) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> dict[str, Any]:
     """CLI entrypoint for Phase 1 pilot training (single-process or torchrun DDP)."""
-    from phase1_pilot.data.tokenizer import build_tokenizer
+    from phase1_pilot.data import tokenizer as tokenizer_mod
 
     args = build_arg_parser().parse_args(argv)
-    return run_training(args, build_tokenizer(args.tokenizer))
+    return run_training(args, tokenizer_mod.build_tokenizer(args.tokenizer, revision=args.tokenizer_revision))
 
 
 if __name__ == "__main__":
