@@ -14,6 +14,7 @@ Regimes (per Track 1 §5.2):
 from __future__ import annotations
 
 import hashlib
+import itertools
 import random
 from collections import deque
 from dataclasses import dataclass
@@ -366,6 +367,154 @@ def generate_modular_varbind(
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class IntDomain:
+    """Inclusive integer range sampled with ``rng.randint(lo, hi)``."""
+
+    lo: int
+    hi: int
+
+    @property
+    def size(self) -> int:
+        return self.hi - self.lo + 1
+
+    def values(self) -> Sequence[int]:
+        return range(self.lo, self.hi + 1)
+
+    def draw(self, rng: random.Random) -> int:
+        return rng.randint(self.lo, self.hi)
+
+
+@dataclass(frozen=True)
+class ChoiceDomain:
+    """Finite set of string options sampled with ``rng.choice(options)``."""
+
+    options: tuple[str, ...]
+
+    @property
+    def size(self) -> int:
+        return len(self.options)
+
+    def values(self) -> Sequence[str]:
+        return self.options
+
+    def draw(self, rng: random.Random) -> str:
+        return rng.choice(self.options)
+
+
+@dataclass(frozen=True)
+class TemplateParam:
+    """One template parameter: the domain it was first sampled from, and a wider superset."""
+
+    name: str
+    original: IntDomain | ChoiceDomain
+    widened: IntDomain | ChoiceDomain
+
+
+@dataclass(frozen=True)
+class NaturalTemplate:
+    """A Regime 2 prompt/target template over an ordered tuple of parameters.
+
+    Parameters are drawn in tuple order, so the draw sequence (and hence the
+    generated data for a given seed) is fixed by this declaration. Every
+    parameter combination must render to a distinct (prompt, target) pair.
+    """
+
+    name: str
+    params: tuple[TemplateParam, ...]
+    render: Callable[..., tuple[str, str]]
+
+    def capacity(self, widened: bool) -> int:
+        """Number of distinct samples the template can produce."""
+        size = 1
+        for p in self.params:
+            size *= (p.widened if widened else p.original).size
+        return size
+
+    def draw(self, rng: random.Random, widened: bool) -> tuple[str, str]:
+        values = {p.name: (p.widened if widened else p.original).draw(rng) for p in self.params}
+        return self.render(**values)
+
+    def original_signatures(self) -> set[str]:
+        """Signatures of every sample in the original domain (enumerated, no sampling)."""
+        names = [p.name for p in self.params]
+        return {
+            _natural_signature(*self.render(**dict(zip(names, combo))))
+            for combo in itertools.product(*(p.original.values() for p in self.params))
+        }
+
+
+def _natural_signature(prompt: str, target: str) -> str:
+    return f"nat|{prompt}|{target}"
+
+
+def _render_math_groups(a: int, b: int, c: int, item: str) -> tuple[str, str]:
+    prod = a * b
+    prompt = (
+        f"Math: Given {a} groups of {b} {item} plus {c} extra {item}. "
+        f"Compute total = {a} * {b} + {c}. Then <ans>"
+    )
+    return prompt, f"{prod} + {c} = {prod + c}"
+
+
+def _render_code_eval(fn: str, m: int, k: int, x0: int, y0: int) -> tuple[str, str]:
+    prompt = (
+        f"Code: def {fn}(x, y): return {m}*x + y + {k}\n"
+        f"Note: Evaluate {fn}({x0}, {y0}). Output:<ans>"
+    )
+    return prompt, f"{m}*{x0} + {y0} + {k} = {m * x0 + y0 + k}"
+
+
+def _render_arithmetic_series(start: int, step: int, n_terms: int) -> tuple[str, str]:
+    seq = [start + i * step for i in range(n_terms + 2)]
+    shown = ", ".join(str(v) for v in seq[:n_terms])
+    prompt = f"Math: Arithmetic series with step {step}: {shown}. Next two terms:<ans>"
+    return prompt, f"{seq[n_terms]}, {seq[n_terms + 1]}"
+
+
+_NAT_ITEMS = ChoiceDomain(("crates", "packets", "blocks", "tokens", "nodes", "frames", "tiles", "cells"))
+_NAT_FN_NAMES = ChoiceDomain((
+    "scale_sum", "linear_step", "box_metric", "shift_total",
+    "weighted_val", "poly_eval", "pair_score", "delta_norm",
+))
+
+# Round-robin order matters: sample i comes from template i % len(NATURAL_TEMPLATES).
+# The `original` domains are the ones every committed dataset (EXP-001, the published
+# HF splits) was generated from; changing them, or the parameter order, changes that data.
+NATURAL_TEMPLATES: tuple[NaturalTemplate, ...] = (
+    NaturalTemplate(
+        name="math_groups",
+        params=(
+            TemplateParam("a", IntDomain(2, 19), IntDomain(2, 49)),
+            TemplateParam("b", IntDomain(2, 15), IntDomain(2, 49)),
+            TemplateParam("c", IntDomain(1, 12), IntDomain(1, 49)),
+            TemplateParam("item", _NAT_ITEMS, _NAT_ITEMS),
+        ),
+        render=_render_math_groups,
+    ),
+    NaturalTemplate(
+        name="code_eval",
+        params=(
+            TemplateParam("fn", _NAT_FN_NAMES, _NAT_FN_NAMES),
+            TemplateParam("m", IntDomain(2, 9), IntDomain(2, 19)),
+            TemplateParam("k", IntDomain(1, 15), IntDomain(1, 49)),
+            TemplateParam("x0", IntDomain(1, 12), IntDomain(1, 49)),
+            TemplateParam("y0", IntDomain(1, 12), IntDomain(1, 49)),
+        ),
+        render=_render_code_eval,
+    ),
+    NaturalTemplate(
+        name="arithmetic_series",
+        params=(
+            TemplateParam("start", IntDomain(1, 15), IntDomain(1, 499)),
+            TemplateParam("step", IntDomain(2, 9), IntDomain(2, 49)),
+            TemplateParam("n_terms", IntDomain(3, 5), IntDomain(3, 5)),
+        ),
+        render=_render_arithmetic_series,
+    ),
+)
+
+
 def generate_natural_stream(
     n: int,
     seed: int = 42,
@@ -375,70 +524,53 @@ def generate_natural_stream(
 
     Provides multi-token structured continuations (4–12 tokens) suitable for
     non-myopic `n_ahead=4` RL rewards and natural-text calibration evaluation.
+
+    Sample ``i`` comes from ``NATURAL_TEMPLATES[i % len(NATURAL_TEMPLATES)]``, drawn
+    from the template's original parameter domains with duplicate rejection. A
+    template switches to its widened domains only once every sample in its original
+    domain is used or excluded. Until then the draws are exactly those of the
+    original generator, so any request it could fill returns identical samples.
     """
     if n <= 0:
         return []
+
+    k = len(NATURAL_TEMPLATES)
+    for t_idx, template in enumerate(NATURAL_TEMPLATES):
+        quota = max(0, (n - t_idx + k - 1) // k)  # indices t_idx, t_idx + k, ... below n
+        cap = template.capacity(widened=True)
+        if quota > cap:
+            raise ValueError(
+                f"generate_natural_stream(n={n}) needs {quota} samples from template "
+                f"{template.name!r}, which can produce at most {cap}"
+            )
 
     rng = random.Random(seed)
     excluded = exclude_signatures if exclude_signatures is not None else set()
     local_seen: set[str] = set()
     samples: list[Sample] = []
-
-    fn_names = (
-        "scale_sum", "linear_step", "box_metric", "shift_total",
-        "weighted_val", "poly_eval", "pair_score", "delta_norm",
-    )
-    items = (
-        "crates", "packets", "blocks", "tokens", "nodes", "frames", "tiles", "cells",
-    )
+    # Unused original-domain samples per template; None until first computed. It is
+    # computed (by enumeration, without touching `rng`) at the template's first duplicate.
+    unused_original: list[int | None] = [None] * k
 
     attempts = 0
     max_attempts = max(n * 25, 500)
     while len(samples) < n and attempts < max_attempts:
         attempts += 1
-        kind = len(samples) % 3
-        if kind == 0:
-            # Structured math derivation prose
-            a = rng.randint(2, 19)
-            b = rng.randint(2, 15)
-            c = rng.randint(1, 12)
-            item = rng.choice(items)
-            prod = a * b
-            total = prod + c
-            prompt = (
-                f"Math: Given {a} groups of {b} {item} plus {c} extra {item}. "
-                f"Compute total = {a} * {b} + {c}. Then <ans>"
-            )
-            target = f"{prod} + {c} = {total}"
-        elif kind == 1:
-            # Structured Python code completion
-            fn = rng.choice(fn_names)
-            m = rng.randint(2, 9)
-            k = rng.randint(1, 15)
-            x0 = rng.randint(1, 12)
-            y0 = rng.randint(1, 12)
-            out = m * x0 + y0 + k
-            prompt = (
-                f"Code: def {fn}(x, y): return {m}*x + y + {k}\n"
-                f"Note: Evaluate {fn}({x0}, {y0}). Output:<ans>"
-            )
-            target = f"{m}*{x0} + {y0} + {k} = {out}"
-        else:
-            # Structured recurrence / sequence reasoning
-            start = rng.randint(1, 15)
-            step = rng.randint(2, 9)
-            n_terms = rng.randint(3, 5)
-            seq = [start + i * step for i in range(n_terms + 2)]
-            shown = ", ".join(str(v) for v in seq[:n_terms])
-            prompt = (
-                f"Math: Arithmetic series with step {step}: {shown}. "
-                f"Next two terms:<ans>"
-            )
-            target = f"{seq[n_terms]}, {seq[n_terms + 1]}"
-
-        sig = f"nat|{prompt}|{target}"
+        t_idx = len(samples) % k
+        template = NATURAL_TEMPLATES[t_idx]
+        widened = unused_original[t_idx] == 0
+        prompt, target = template.draw(rng, widened=widened)
+        sig = _natural_signature(prompt, target)
         if sig in excluded or sig in local_seen:
+            if unused_original[t_idx] is None:
+                unused_original[t_idx] = sum(
+                    1
+                    for s in template.original_signatures()
+                    if s not in excluded and s not in local_seen
+                )
             continue
+        if not widened and unused_original[t_idx] is not None:
+            unused_original[t_idx] -= 1
 
         samples.append(
             Sample(
@@ -455,7 +587,8 @@ def generate_natural_stream(
 
     if len(samples) < n:
         raise RuntimeError(
-            f"Could only generate {len(samples)}/{n} unique natural_stream samples"
+            f"Could only generate {len(samples)}/{n} unique natural_stream samples "
+            f"in {max_attempts} attempts"
         )
     return samples
 
@@ -720,6 +853,10 @@ def collate_batch(
     }
 
 
+# Fractions of the `train` split drawn from Regimes 1 / 2 / 3 (algorithmic, natural, aleatoric).
+TRAIN_REGIME_MIX: tuple[float, float, float] = (0.75, 0.15, 0.10)
+
+
 def _split_counts(total: int, ratios: Sequence[float]) -> list[int]:
     """Deterministically partition `total` into integer counts matching `ratios`."""
     raw = [total * r for r in ratios]
@@ -798,8 +935,7 @@ def build_stratified_datasets(
     n_train = data_cfg.n_train_samples
     n_eval = data_cfg.n_eval_samples
 
-    # Partition train across Regimes 1 / 2 / 3 (75% / 15% / 10%).
-    n_train_alg, n_train_nat, n_train_alea = _split_counts(n_train, (0.75, 0.15, 0.10))
+    n_train_alg, n_train_nat, n_train_alea = _split_counts(n_train, TRAIN_REGIME_MIX)
 
     seen_alg_prompts: set[str] = set()
     train_alg = _build_algorithmic_mix(
