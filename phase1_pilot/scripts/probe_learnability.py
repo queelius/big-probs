@@ -15,6 +15,10 @@ Two task sets:
 `--answer-only` masks every label before `prompt_len`, so only target tokens are supervised.
 The default loss is the pilot's: every next token of prompt and target.
 
+Pointer runs also report `key_swap`: each chain head of fixed bindings is queried in turn
+(`key_swap_probe`), which separates resolving the query from copying any listed literal.
+`--eval-checkpoint` scores a saved probe model with the same flags instead of training one.
+
     uv run python scripts/probe_learnability.py --steps 3000 --output runs/probe.json
 """
 
@@ -65,21 +69,65 @@ def generate_pointer_chains(
     out = []
     for i in range(n):
         d = depths[i % len(depths)]
-        names = rng.sample(pool, POINTER_CHAINS * (d + 1))
-        literals = rng.sample(range(POINTER_MOD), POINTER_CHAINS)
-        eqs: list[str] = []
-        for c in range(POINTER_CHAINS):
-            chain = names[c * (d + 1) : (c + 1) * (d + 1)]
-            eqs.append(f"{chain[-1]}={literals[c]}")
-            eqs.extend(f"{chain[j]}={chain[j + 1]}" for j in range(d))
-        query, target = names[0], str(literals[0])
-        rng.shuffle(eqs)
-        prompt = f"Ptr: {'; '.join(eqs)}; Query: {query}<ans>"
+        heads, literals, eqs = _pointer_bindings(rng, d, pool)
+        prompt = _pointer_prompt(eqs, heads[0])
         out.append(
-            Sample(prompt=prompt, target=target, full_text=prompt + target, regime="algorithmic",
-                   task="pointer_chain", depth=d, answer_span_start=len(prompt))
+            Sample(prompt=prompt, target=str(literals[0]), full_text=prompt + str(literals[0]),
+                   regime="algorithmic", task="pointer_chain", depth=d, answer_span_start=len(prompt))
         )
     return out
+
+
+def _pointer_bindings(rng: random.Random, d: int, pool: list[str]) -> tuple[list[str], list[int], list[str]]:
+    """Chain heads, their literals, and the shuffled equations of one depth-`d` prompt."""
+    names = rng.sample(pool, POINTER_CHAINS * (d + 1))
+    literals = rng.sample(range(POINTER_MOD), POINTER_CHAINS)
+    eqs: list[str] = []
+    for c in range(POINTER_CHAINS):
+        chain = names[c * (d + 1) : (c + 1) * (d + 1)]
+        eqs.append(f"{chain[-1]}={literals[c]}")
+        eqs.extend(f"{chain[j]}={chain[j + 1]}" for j in range(d))
+    rng.shuffle(eqs)
+    return names[:: d + 1], literals, eqs
+
+
+def _pointer_prompt(eqs: list[str], query: str) -> str:
+    return f"Ptr: {'; '.join(eqs)}; Query: {query}<ans>"
+
+
+@torch.no_grad()
+def key_swap_probe(
+    model: torch.nn.Module, tok: PilotTokenizer, depth: int, n: int = 200, seed: int = 777,
+    pool_size: int = DEFAULT_POINTER_POOL,
+) -> dict[str, float]:
+    """Query each chain head of `n` fixed binding sets; report what the answer depends on.
+
+    A model that resolves the query is right for all three keys. One that copies a listed
+    literal without matching the key keeps its answer when the key changes and scores 1/3.
+    """
+    rng = random.Random(seed)
+    pool = [f"v{i}" for i in range(pool_size)]
+    mass = p_right = right = changed = all_right = 0.0
+    for _ in range(n):
+        heads, literals, eqs = _pointer_bindings(rng, depth, pool)
+        cand = [tok.encode(str(x))[0] for x in literals]
+        preds = []
+        for head, target in zip(heads, cand):
+            ids = [tok.bos_id] + tok.encode(_pointer_prompt(eqs, head))
+            probs = torch.softmax(model(torch.tensor([ids])).logits[0, -1].float(), -1)
+            mass += float(probs[cand].sum())
+            p_right += float(probs[target])
+            preds.append(int(probs.argmax()))
+        hits = [p == t for p, t in zip(preds, cand)]
+        right += sum(hits)
+        changed += len(set(preds)) > 1
+        all_right += all(hits)
+    queries = n * POINTER_CHAINS
+    return {
+        "n_prompts": n, "acc": right / queries, "mean_p_correct": p_right / queries,
+        "mean_candidate_mass": mass / queries,
+        "frac_prediction_changes_with_key": changed / n, "frac_all_keys_right": all_right / n,
+    }
 
 
 def answer_only_collate(items: list[TokenizedSample], pad_id: int) -> dict[str, Any]:
@@ -130,12 +178,17 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
     model = build_model(ModelConfig.preset(args.preset, vocab_size=tok.vocab_size, max_seq_len=MAX_SEQ_LEN, variant="ntp"))
 
     t0 = time.perf_counter()
-    res = train_supervised(
-        model, train_loader, val_loader,
-        TrainConfig(preset=args.preset, batch_size=32, max_steps=args.steps, lr=LR[args.preset],
-                    log_every=max(1, args.steps // 10), output_dir=args.output + ".d", seed=SEED, device="cpu"),
-        pad_id=tok.pad_id,
-    )
+    if args.eval_checkpoint:
+        state = torch.load(args.eval_checkpoint, map_location="cpu", weights_only=True)["model_state_dict"]
+        model.load_state_dict(state)  # strict: a preset mismatch raises
+        res = {"final_train_loss": None, "final_val_loss": None, "history": []}
+    else:
+        res = train_supervised(
+            model, train_loader, val_loader,
+            TrainConfig(preset=args.preset, batch_size=32, max_steps=args.steps, lr=LR[args.preset],
+                        log_every=max(1, args.steps // 10), output_dir=args.output + ".d", seed=SEED, device="cpu"),
+            pad_id=tok.pad_id,
+        )
     train_seconds = time.perf_counter() - t0
 
     model.eval()
@@ -152,6 +205,11 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
                 "n": len(samples), "acc": correct / len(samples), "mean_nll": nll / len(samples),
                 "prompt_blind_acc": ref.accuracy, "prompt_blind_nll": ref.mean_nll,
             }
+        key_swap = (
+            {f"d{d}": key_swap_probe(model, tok, d, pool_size=args.pool_size)
+             for d in (*args.train_depths, *args.ood_depths)}
+            if args.tasks == "pointer" else {}
+        )
     return {
         "config": {**vars(args), "seed": SEED, "n_train": N_TRAIN, "lr": LR[args.preset], "batch_size": 32},
         "train_seconds": train_seconds,
@@ -159,6 +217,7 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
         "final_val_loss": res["final_val_loss"],
         "val_curve": [[h["step"], h["val_loss"]] for h in res["history"] if h.get("val_loss")],
         "cells": out_cells,
+        "key_swap": key_swap,
     }
 
 
@@ -171,6 +230,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--answer-only", action="store_true")
     p.add_argument("--pool-size", type=int, default=DEFAULT_POINTER_POOL, help="pointer variable names v0..v<N-1>")
     p.add_argument("--steps", type=int, default=3000)
+    p.add_argument("--eval-checkpoint", default=None,
+                   help="score this saved probe checkpoint (`<output>.d/checkpoint.pt`) instead of training")
     p.add_argument("--threads", type=int, default=4)
     p.add_argument("--output", required=True)
     args = p.parse_args(argv)
